@@ -1,0 +1,9 @@
+loguru
+jinja2
+uvicorn
+requests
+aiofiles
+fastapi[all]
+python-multipart
+starlette_exporter
+cryptography==2.6.1
