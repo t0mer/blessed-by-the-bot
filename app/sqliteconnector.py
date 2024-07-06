@@ -9,6 +9,7 @@ class SqliteConnector:
     def open_connection(self):
         try:
             conn = sqlite3.connect(self.db_path)
+            self.conn = conn
             return conn
         except sqlite3.Error as e:
             logger.error(str(e))
@@ -16,188 +17,119 @@ class SqliteConnector:
 
     # Create tables
     def create_tables(self):
-        if self.conn is not None:
+        if self.conn is None:
+            self.open_connection()
+        else:
             try:
                 c = self.conn.cursor()
-                c.execute('''CREATE TABLE IF NOT EXISTS Users (
-                                Id INTEGER PRIMARY KEY,
+                c.execute('''
+                            CREATE TABLE IF NOT EXISTS Languages (
+                                LanguageId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                Language TEXT NOT NULL UNIQUE
+                            )
+                            ''')
+
+                c.execute('''
+                            CREATE TABLE IF NOT EXISTS Genders (
+                                GenderId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                Gender TEXT NOT NULL UNIQUE
+                            )
+                            ''')
+
+                c.execute('''
+                            CREATE TABLE IF NOT EXISTS Blesses (
+                                BlessId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                GenderId INTEGER,
+                                LanguageId INTEGER,
+                                Bless TEXT NOT NULL,
+                                FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
+                                FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
+                            )
+                            ''')
+
+                c.execute('''
+                            CREATE TABLE IF NOT EXISTS Persons (
+                                PersonId INTEGER PRIMARY KEY AUTOINCREMENT,
                                 FirstName TEXT NOT NULL,
                                 LastName TEXT NOT NULL,
+                                BirthDate DATE NOT NULL,
                                 GenderId INTEGER,
-                                Birthdate DATE,
-                                WhatsappNumber TEXT,
                                 LanguageId INTEGER,
-                                IsVip BOOLEAN DEFAULT 0,
-                                FOREIGN KEY (GenderId) REFERENCES Genders(Id),
-                                FOREIGN KEY (LanguageId) REFERENCES Languages(Id)
-                            )''')
-
-                c.execute('''CREATE TABLE IF NOT EXISTS Blesses (
-                                BlessId INTEGER PRIMARY KEY,
-                                LanguageId INTEGER,
-                                GenderId INTEGER,
-                                BlessText TEXT,
-                                FOREIGN KEY (LanguageId) REFERENCES Languages(Id),
-                                FOREIGN KEY (GenderId) REFERENCES Genders(Id)
-                            )''')
-
-                c.execute('''CREATE TABLE IF NOT EXISTS Genders (
-                                GenderId INTEGER PRIMARY KEY,
-                                GenderName TEXT UNIQUE
-                            )''')
-
-                c.execute('''CREATE TABLE IF NOT EXISTS Languages (
-                                LanguageId INTEGER PRIMARY KEY,
-                                LanguageName TEXT UNIQUE
-                            )''')
+                                PhoneNumber TEXT NOT NULL,
+                                PreferredHour INTEGER NOT NULL,
+                                FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
+                                FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
+                            )
+                            ''')
 
                 self.conn.commit()
                 logger.info("Tables created successfully")
             except sqlite3.Error as e:
                 logger.error(str(e))
-        else:
-            logger.error("Failed to connect to database")
 
-# Insert into Users table
-    def insert_user(self, first_name, last_name, gender_id, birthdate, whatsapp_number, language_id, is_vip=False):
-        try:
-            c = self.conn.cursor()
-            c.execute('''INSERT INTO Users (FirstName, LastName, GenderId, Birthdate, WhatsappNumber, LanguageId, IsVip)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                    (first_name, last_name, gender_id, birthdate, whatsapp_number, language_id, is_vip))
-            self.conn.commit()
-            logger.info("User inserted successfully")
-        except sqlite3.Error as e:
-            logger.error(str(e))
+    def execute_query(self, query, params=()):
+        conn = sqlite3.connect('birthdays.db')
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conn.commit()
+        conn.close()
 
-    # Update Users table
-    def update_user(self, user_id, first_name=None, last_name=None, gender_id=None, birthdate=None,
-                    whatsapp_number=None, language_id=None, is_vip=None):
-        try:
-            c = self.conn.cursor()
-            update_query = "UPDATE Users SET "
-            params = []
+    # Inserts
+    def insert_language(self, language):
+        query = 'INSERT INTO Languages (Language) VALUES (?)'
+        self.execute_query(query, (language,))
 
-            if first_name:
-                update_query += "FirstName=?, "
-                params.append(first_name)
-            if last_name:
-                update_query += "LastName=?, "
-                params.append(last_name)
-            if gender_id:
-                update_query += "GenderId=?, "
-                params.append(gender_id)
-            if birthdate:
-                update_query += "Birthdate=?, "
-                params.append(birthdate)
-            if whatsapp_number:
-                update_query += "WhatsappNumber=?, "
-                params.append(whatsapp_number)
-            if language_id:
-                update_query += "LanguageId=?, "
-                params.append(language_id)
-            if is_vip is not None:
-                update_query += "IsVip=?, "
-                params.append(is_vip)
+    def insert_gender(self, gender):
+        query = 'INSERT INTO Genders (Gender) VALUES (?)'
+        self.execute_query(query, (gender,))
 
-            # Remove the trailing comma and space
-            update_query = update_query[:-2]
-            update_query += " WHERE Id=?"
+    def insert_bless(self, gender_id, language_id, bless):
+        query = 'INSERT INTO Blesses (GenderId, LanguageId, Bless) VALUES (?, ?, ?)'
+        self.execute_query(query, (gender_id, language_id, bless))
 
-            # Append user_id as the last parameter
-            params.append(user_id)
+    def insert_person(self, first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour):
+        query = 'INSERT INTO Persons (FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour))
 
-            c.execute(update_query, tuple(params))
-            self.conn.commit()
-            logger.info("User updated successfully")
-        except sqlite3.Error as e:
-            logger.error((e))
+    # Updates
 
-    # Delete from Users table
-    def delete_user(self, user_id):
-        try:
-            c = self.conn.cursor()
-            c.execute("DELETE FROM Users WHERE Id=?", (user_id,))
-            self.conn.commit()
-            logger.info("User deleted successfully")
-        except sqlite3.Error as e:
-            logger.error((e))
+    def update_language(self, language_id, new_language):
+        query = 'UPDATE Languages SET Language = ? WHERE LanguageId = ?'
+        self.execute_query(query, (new_language, language_id))
 
-    # Select from Users table
-    def select_users(self):
-        try:
-            c = self.conn.cursor()
-            c.execute("SELECT * FROM Users")
-            rows = c.fetchall()
-            return rows
-        except sqlite3.Error as e:
-            logger.error(str(e))
-            
-    # Select from Users table
-    def select_languages(self):
-        try:
-            c = self.conn.cursor()
-            c.execute("SELECT * FROM Languages")
-            rows = c.fetchall()
-            return rows
-        except sqlite3.Error as e:
-            logger.error(str(e))
+    def update_gender(self, gender_id, new_gender):
+        query = 'UPDATE Genders SET Gender = ? WHERE GenderId = ?'
+        self.execute_query(query, (new_gender, gender_id))
+
+    def update_bless(self, bless_id, gender_id, language_id, bless):
+        query = 'UPDATE Blesses SET GenderId = ?, LanguageId = ?, Bless = ? WHERE BlessId = ?'
+        self.execute_query(query, (gender_id, language_id, bless, bless_id))
+
+    def update_person(self, person_id, first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour):
+        query = 'UPDATE Persons SET FirstName = ?, LastName = ?, BirthDate = ?, GenderId = ?, LanguageId = ?, PhoneNumber = ?, PreferredHour = ? WHERE PersonId = ?'
+        self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour, person_id))
 
 
-    # Select from Users table
-    def select_genders(self):
-        try:
-            c = self.conn.cursor()
-            c.execute("SELECT * FROM Genders")
-            rows = c.fetchall()
-            return rows
-        except sqlite3.Error as e:
-            logger.error(str(e))
+    # Deletes
+    
+    def delete_language(self, language_id):
+        query = 'DELETE FROM Languages WHERE LanguageId = ?'
+        self.execute_query(query, (language_id,))
 
+    def delete_gender(self, gender_id):
+        query = 'DELETE FROM Genders WHERE GenderId = ?'
+        self.execute_query(query, (gender_id,))
 
-    # Insert into Genders table
-    def insert_gender(self, gender_name):
-        try:
-            c = self.conn.cursor()
-            c.execute('''INSERT INTO Genders (GenderName) VALUES (?)''', (gender_name,))
-            self.conn.commit()
-            logger.info("Gender inserted successfully")
-        except sqlite3.Error as e:
-            logger.error((e))
+    def delete_bless(self, bless_id):
+        query = 'DELETE FROM Blesses WHERE BlessId = ?'
+        self.execute_query(query, (bless_id,))
 
-    # Insert into Languages table
-    def insert_language(self, language_name):
-        try:
-            c = self.conn.cursor()
-            c.execute('''INSERT INTO Languages (LanguageName) VALUES (?)''', (language_name,))
-            self.conn.commit()
-            print("Language inserted successfully")
-        except sqlite3.Error as e:
-            logger.error(str(e))
+    def delete_person(self, person_id):
+        query = 'DELETE FROM Persons WHERE PersonId = ?'
+        self.execute_query(query, (person_id,))
 
-    # Insert into Blesses table
-    def insert_bless(self, language_id, gender_id, bless_text):
-        try:
-            c = self.conn.cursor()
-            c.execute('''INSERT INTO Blesses (LanguageId, GenderId, BlessText) VALUES (?, ?, ?)''',
-                    (language_id, gender_id, bless_text))
-            self.conn.commit()
-            logger.info("Bless inserted successfully")
-        except sqlite3.Error as e:
-            logger.error((e))
 
 # Example usage:
 connector = SqliteConnector()
 
-# Inserting data
-connector.insert_user("John", "Doe", 1, "1990-01-01", "123456789", 1)
-connector.insert_gender("Zebra")
-connector.insert_language("Polish")
-connector.insert_bless(1, 1, "May your day be blessed with happiness.")
-
-print(connector.select_users())
-print(connector.select_languages())
-print(connector.select_genders())
-
-# Don't forget to close the connection when done
 connector.conn.close()
