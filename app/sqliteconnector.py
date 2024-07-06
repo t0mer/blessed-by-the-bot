@@ -4,75 +4,85 @@ import sqlite3
 class SqliteConnector:
     def __init__(self):
         self.db_path = "db/data.db"
-        self.conn = self.open_connection()
+        self.conn = None
     # Connect to the SQLite database
     def open_connection(self):
-        try:
-            conn = sqlite3.connect(self.db_path)
-            self.conn = conn
-            return conn
-        except sqlite3.Error as e:
-            logger.error(str(e))
-            return None
+        if self.conn is None:
+            try:
+                self.conn = sqlite3.connect(self.db_path)
+                logger.info("Connection opened successfully.")
+            except sqlite3.Error as e:
+                logger.error(f"Error connecting to database: {e}")
+        else:
+            logger.debug("Connection is already open.")
+
+
+    def close_connection(self):
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None
+            logger.info("Connection closed.")
+        else:
+            logger.info("No connection to close.")
+
 
     # Create tables
     def create_tables(self):
-        if self.conn is None:
+        try:
             self.open_connection()
-        else:
-            try:
-                c = self.conn.cursor()
-                c.execute('''
-                            CREATE TABLE IF NOT EXISTS Languages (
-                                LanguageId INTEGER PRIMARY KEY AUTOINCREMENT,
-                                Language TEXT NOT NULL UNIQUE
-                            )
-                            ''')
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS Languages (
+                            LanguageId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Language TEXT NOT NULL UNIQUE
+                        )
+                        ''')
 
-                c.execute('''
-                            CREATE TABLE IF NOT EXISTS Genders (
-                                GenderId INTEGER PRIMARY KEY AUTOINCREMENT,
-                                Gender TEXT NOT NULL UNIQUE
-                            )
-                            ''')
+            cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS Genders (
+                            GenderId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Gender TEXT NOT NULL UNIQUE
+                        )
+                        ''')
 
-                c.execute('''
-                            CREATE TABLE IF NOT EXISTS Blesses (
-                                BlessId INTEGER PRIMARY KEY AUTOINCREMENT,
-                                GenderId INTEGER,
-                                LanguageId INTEGER,
-                                Bless TEXT NOT NULL,
-                                FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
-                                FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
-                            )
-                            ''')
+            cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS Blesses (
+                            BlessId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            GenderId INTEGER,
+                            LanguageId INTEGER,
+                            Bless TEXT NOT NULL,
+                            FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
+                            FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
+                        )
+                        ''')
 
-                c.execute('''
-                            CREATE TABLE IF NOT EXISTS Persons (
-                                PersonId INTEGER PRIMARY KEY AUTOINCREMENT,
-                                FirstName TEXT NOT NULL,
-                                LastName TEXT NOT NULL,
-                                BirthDate DATE NOT NULL,
-                                GenderId INTEGER,
-                                LanguageId INTEGER,
-                                PhoneNumber TEXT NOT NULL,
-                                PreferredHour INTEGER NOT NULL,
-                                FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
-                                FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
-                            )
-                            ''')
+            cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS Persons (
+                            PersonId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            FirstName TEXT NOT NULL,
+                            LastName TEXT NOT NULL,
+                            BirthDate DATE NOT NULL,
+                            GenderId INTEGER,
+                            LanguageId INTEGER,
+                            PhoneNumber TEXT NOT NULL,
+                            PreferredHour INTEGER NOT NULL,
+                            FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
+                            FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
+                        )
+                        ''')
 
-                self.conn.commit()
-                logger.info("Tables created successfully")
-            except sqlite3.Error as e:
-                logger.error(str(e))
+            self.conn.commit()
+            self.close_connection()
+            logger.info("Tables created successfully")
+        except sqlite3.Error as e:
+            logger.error(str(e))
 
     def execute_query(self, query, params=()):
-        conn = sqlite3.connect('birthdays.db')
-        cursor = conn.cursor()
+        self.open_connection()
+        cursor = self.conn.cursor()
         cursor.execute(query, params)
-        conn.commit()
-        conn.close()
+        self.conn.commit()
+        self.close_connection()
 
     # Inserts
     def insert_language(self, language):
@@ -129,7 +139,45 @@ class SqliteConnector:
         self.execute_query(query, (person_id,))
 
 
+
+    # Selects
+    
+    def select_all_languages(self):
+        self.open_connection()
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT LanguageId, Language FROM Languages')
+        rows = cursor.fetchall()
+        self.close_connection()
+        return rows
+
+    def select_all_genders(self):
+        self.open_connection()
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT GenderId, Gender FROM Genders')
+        rows = cursor.fetchall()
+        self.close_connection()
+        return rows
+
+    def select_all_blesses(self):
+        self.open_connection()
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT BlessId, GenderId, LanguageId, Bless FROM Blesses')
+        rows = cursor.fetchall()
+        self.close_connection()
+        return rows
+
+    def select_all_persons(self):
+        self.open_connection()
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT PersonId, FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour FROM Persons')
+        rows = cursor.fetchall()
+        self.close_connection()
+        return rows
+
+
 # Example usage:
 connector = SqliteConnector()
+connector.create_tables()
+connector.select_all_persons()
 
-connector.conn.close()
+
