@@ -111,14 +111,49 @@ class SqliteConnector:
         query = 'UPDATE Genders SET Gender = ? WHERE GenderId = ?'
         self.execute_query(query, (new_gender, gender_id))
 
-    def update_bless(self, bless_id, gender_id, language_id, bless):
-        query = 'UPDATE Blesses SET GenderId = ?, LanguageId = ?, Bless = ? WHERE BlessId = ?'
-        self.execute_query(query, (gender_id, language_id, bless, bless_id))
+    def update_bless(self, bless_id, gender_id=None, language_id=None, bless=None):
+        query = 'UPDATE Blesses SET '
+        params = []
+        if gender_id is not None:
+            query += 'GenderId=?, '
+            params.append(gender_id)
+        if language_id is not None:
+            query += 'LanguageId=?, '
+            params.append(language_id)
+        if bless:
+            query += 'Bless=?, '
+            params.append(bless)
+        query = query.rstrip(', ') + ' WHERE BlessId=?'
+        params.append(bless_id)
+        self.execute_query(query, params)
 
-    def update_person(self, person_id, first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour):
-        query = 'UPDATE Persons SET FirstName = ?, LastName = ?, BirthDate = ?, GenderId = ?, LanguageId = ?, PhoneNumber = ?, PreferredHour = ? WHERE PersonId = ?'
-        self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour, person_id))
-
+    def update_person(self, person_id, first_name=None, last_name=None, birth_date=None, gender_id=None, language_id=None, phone_number=None, preferred_hour=None):
+        query = 'UPDATE Persons SET '
+        params = []
+        if first_name:
+            query += 'FirstName=?, '
+            params.append(first_name)
+        if last_name:
+            query += 'LastName=?, '
+            params.append(last_name)
+        if birth_date:
+            query += 'BirthDate=?, '
+            params.append(birth_date)
+        if gender_id is not None:
+            query += 'GenderId=?, '
+            params.append(gender_id)
+        if language_id is not None:
+            query += 'LanguageId=?, '
+            params.append(language_id)
+        if phone_number:
+            query += 'PhoneNumber=?, '
+            params.append(phone_number)
+        if preferred_hour is not None:
+            query += 'PreferredHour=?, '
+            params.append(preferred_hour)
+        query = query.rstrip(', ') + ' WHERE PersonId=?'
+        params.append(person_id)
+        self.execute_query(query, params)
 
     # Deletes
     
