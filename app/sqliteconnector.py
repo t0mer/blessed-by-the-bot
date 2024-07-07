@@ -107,6 +107,13 @@ class SqliteConnector:
         query = 'INSERT INTO Persons (FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour, intro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         return self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour, intro),True)
 
+    def insert_configurarion(self,whatsapp_api_url, whatsapp_api_token, whatsapp_api_session_name):
+        query = 'INSERT INTO Configuration (ConfigId, WhatsappApiUrl, WhatsappApiToken, WhatsappApiSessionName) VALUES (1, ?, ?, ?)'''
+        return self.execute_query(query, (whatsapp_api_url, whatsapp_api_token, whatsapp_api_session_name),True)
+        
+    
+    
+    
     # Updates
 
     def update_language(self, language_id, new_language):
@@ -164,6 +171,33 @@ class SqliteConnector:
         params.append(person_id)
         self.execute_query(query, params)
 
+
+    def update_configuration(self, whatsapp_api_url=None, whatsapp_api_token=None, whatsapp_api_session_name=None):
+        try:
+            update_query = "UPDATE Configuration SET "
+            params = []
+
+            if whatsapp_api_url:
+                update_query += "WhatsappApiUrl=?, "
+                params.append(whatsapp_api_url)
+            if whatsapp_api_token:
+                update_query += "WhatsappApiToken=?, "
+                params.append(whatsapp_api_token)
+            if whatsapp_api_session_name:
+                update_query += "WhatsappApiSessionName=?, "
+                params.append(whatsapp_api_session_name)
+
+            # Remove the trailing comma and space
+            update_query = update_query[:-2]
+            update_query += " WHERE ConfigId=1"
+            self.execute_query(update_query, params)
+            return {"message": "Configuration updated successfully."}
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Error updating configuration. {e}")
+
+
+
     # Deletes
     
     def delete_language(self, language_id):
@@ -181,6 +215,14 @@ class SqliteConnector:
     def delete_person(self, person_id):
         query = 'DELETE FROM Persons WHERE PersonId = ?'
         self.execute_query(query, (person_id,))
+
+    def delete_configuration(self):
+        try:
+            self.execute_query("DELETE FROM Configuration WHERE ConfigId=1")
+            return {"message": "Configuration deleted successfully."}
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Error deleting configuration. {e}")
 
 
 
@@ -244,6 +286,23 @@ class SqliteConnector:
             self.open_connection()
             cursor = self.conn.cursor()
             cursor.execute('SELECT PersonId, FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour, Intro FROM Persons')
+            if api_call == True:
+                rows = [dict((cursor.description[i][0], value) \
+                for i, value in enumerate(row)) for row in cursor.fetchall()]
+                cursor.close()      
+                return (rows[0] if rows else None) if False else rows
+            else:
+                rows = cursor.fetchall()
+                cursor.close()
+            return rows
+        finally:
+            self.close_connection()
+
+    def get_configuration(self, api_call=False):
+        try:
+            self.open_connection()
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT ConfigId, WhatsappApiUrl, WhatsappApiToken, WhatsappApiSessionName FROM Configuration WHERE ConfigId=1")
             if api_call == True:
                 rows = [dict((cursor.description[i][0], value) \
                 for i, value in enumerate(row)) for row in cursor.fetchall()]
