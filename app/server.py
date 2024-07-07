@@ -27,71 +27,99 @@ from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 class Server:
     def __init__(self):
-        self.app = FastAPI()
         self.db = SqliteConnector()
+        self.tags_metadata = [
+            {
+                "name": "Blesses",
+                "description": "Blesses API endpoints (Add, Update, Delete, Get)",
+            },
+            {
+                "name": "Persons",
+                "description": "Persons API endpoints (Add, Update, Delete, Get)",
+            },
+            {
+                "name": "Genders",
+                "description": "Genders API endpoints (Add, Update, Delete, Get)",
+            },
+            {
+                "name": "Languages",
+                "description": "Languages API endpoints (Add, Update, Delete, Get)",
+            },
+        
+        ]
+        self.app = FastAPI(title="Blessed by the bot | Tomer Klein", description="Whatsapp bot for automated blesses and whishes by @Tomer Klein", version='1.0.0', openapi_tags=self.tags_metadata, contact={"name": "Tomer Klein", "email": "tomer.klein@gmail.com", "url": "https://github.com/t0mer/blessed-by-the-bot"})
+        self.app.add_route("/metrics", handle_metrics)
+        self.origins = ["*"]
+
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )    
     
     
-    
-        @self.app.get("/languages/")
+        @self.app.get("/languages/",tags=['Languages'], summary="Get the list of languages")
         def get_languages():
             languages = self.db.select_all_languages(True)
             return JSONResponse(languages)
 
 
-        @self.app.get("/genders/")
+        @self.app.get("/genders/", tags=['Genders'], summary="Get the list of genders")
         def get_genders():
             genders = self.db.select_all_genders()
             return JSONResponse(genders)
         
-        @self.app.get("/blesses/")
+        @self.app.get("/blesses/", tags=['Blesses'], summary="Get the list of blesses")
         def get_blesses():
             blesses = self.db.select_all_blesses()
             return JSONResponse(blesses)
         
-        @self.app.get("/persons/")
+        @self.app.get("/persons/", tags=['Persons'], summary="Get the list of persons")
         def get_persons():
             persons = self.db.select_all_persons()
             return JSONResponse(persons)
         
 
-        @self.app.delete("/languages/{language_id}")
+        @self.app.delete("/languages/{language_id}",tags=['Languages'], summary="Delete the requested language")
         def delete_language(language_id: int):
             self.db.delete_language(language_id=language_id)
             return {"message": "Language deleted successfully"}
 
-        @self.app.delete("/genders/{gender_id}")
+        @self.app.delete("/genders/{gender_id}", tags=['Genders'], summary="Delete the requested gender")
         def delete_gender(gender_id: int):
             self.db.delete_gender(gender_id=gender_id)
             return {"message": "Gender deleted successfully"}
 
 
-        @self.app.delete("/blesses/{bless_id}")
+        @self.app.delete("/blesses/{bless_id}", tags=['Blesses'], summary="Delete the requested bless")
         def delete_bless(bless_id: int):
             self.db.delete_bless(bless_id=bless_id)
             return {"message": "Bless deleted successfully"}
 
-        @self.app.delete("/persons/{person_id}")
+        @self.app.delete("/persons/{person_id}", tags=['Persons'], summary="Delete the requested person")
         def delete_person(person_id: int):
             self.db.delete_person(person_id=person_id)
             return {"message": "Person deleted successfully"}
 
 
-        @self.app.put("/languages/{language_id}", response_model=Language)
+        @self.app.put("/languages/{language_id}", response_model=Language, tags=['Languages'], summary="Update the language name")
         def update_language(language_id: int, language: Language):
             self.db.update_language(language_id=language_id,new_language=language)
             return {**language.dict(), "LanguageId": language_id}
 
-        @self.app.put("/genders/{gender_id}", response_model=Gender)
+        @self.app.put("/genders/{gender_id}", response_model=Gender, tags=['Genders'], summary="Update the gender name")
         def update_gender(gender_id: int, gender: Gender):
             self.db.update_gender(gender_id=gender_id,gender=gender.Gender)
             return {**gender.dict(), "GenderId": gender_id}
 
-        @self.app.put("/blesses/{bless_id}", response_model=Bless)
+        @self.app.put("/blesses/{bless_id}", response_model=Bless, tags=['Blesses'], summary="Update the bless")
         def update_bless(bless_id: int, bless: Bless):
             self.db.update_bless(bless_id=bless_id,gender_id=bless.GenderId,language_id=bless.LanguageId,bless=bless.Bless)
             return {**bless.dict(), "BlessId": bless_id}
 
-        @self.app.put("/persons/{person_id}", response_model=Person)
+        @self.app.put("/persons/{person_id}", response_model=Person, tags=['Persons'], summary="Update the person")
         def update_person(person_id: int, person: Person):
             self.db.update_person(person_id=person_id,first_name=person.FirstName, last_name=person.LastName,
                                   birth_date=person.BirthDate,gender_id=person.GenderId,language_id=person.LanguageId,
@@ -99,25 +127,25 @@ class Server:
             return {**person.dict(), "PersonId": person_id}
 
 
-        @self.app.post("/languages/", response_model=Language)
+        @self.app.post("/languages/", response_model=Language,tags=['Languages'], summary="Add a new language to the languages list")
         def create_language(language: Language):
             language_id = self.db.insert_language(language=language.Language)
             return {**language.dict(), "LanguageId": language_id}
 
 
 
-        @self.app.post("/genders/", response_model=Gender)
+        @self.app.post("/genders/", response_model=Gender, tags=['Genders'], summary="Add a new gender to the genders list")
         def create_gender(gender: Gender):
             gender_id = self.db.insert_gender(gender=gender_id)
             return {**gender.dict(), "GenderId": gender_id}
 
 
-        @self.app.post("/blesses/", response_model=Bless)
+        @self.app.post("/blesses/", response_model=Bless, tags=['Blesses'], summary="Add a new bless to the blesses list")
         def create_bless(bless: Bless):
             bless_id = self.db.insert_bless(gender_id=bless.GenderId,language_id=bless.LanguageId, bless=bless.Bless)
             return {**bless.dict(), "BlessId": bless_id}
 
-        @self.app.post("/persons/", response_model=Person)
+        @self.app.post("/persons/", response_model=Person, tags=['Persons'], summary="Add a new person to the persons list")
         def create_person(person: Person):
             person_id = self.db.insert_person(person.FirstName, person.LastName, person.BirthDate, person.GenderId, person.LanguageId, person.PhoneNumber, person.PreferredHour)
             return {**person.dict(), "PersonId": person_id}
