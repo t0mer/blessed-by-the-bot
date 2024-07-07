@@ -77,29 +77,34 @@ class SqliteConnector:
         except sqlite3.Error as e:
             logger.error(str(e))
 
-    def execute_query(self, query, params=()):
+    def execute_query(self, query, params=(),is_insert=False):
         self.open_connection()
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         self.conn.commit()
+        if is_insert:
+            lastrowid = cursor.lastrowid
+            self.close_connection()
+            return lastrowid
         self.close_connection()
+            
 
     # Inserts
     def insert_language(self, language):
         query = 'INSERT INTO Languages (Language) VALUES (?)'
-        self.execute_query(query, (language,))
+        return self.execute_query(query, (language,),True)
 
     def insert_gender(self, gender):
         query = 'INSERT INTO Genders (Gender) VALUES (?)'
-        self.execute_query(query, (gender,))
+        return self.execute_query(query, (gender,),True)
 
     def insert_bless(self, gender_id, language_id, bless):
         query = 'INSERT INTO Blesses (GenderId, LanguageId, Bless) VALUES (?, ?, ?)'
-        self.execute_query(query, (gender_id, language_id, bless))
+        return self.execute_query(query, (gender_id, language_id, bless),True)
 
     def insert_person(self, first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour):
         query = 'INSERT INTO Persons (FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour))
+        return self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour),True)
 
     # Updates
 
@@ -177,37 +182,75 @@ class SqliteConnector:
 
     # Selects
     
-    def select_all_languages(self):
-        self.open_connection()
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT LanguageId, Language FROM Languages')
-        rows = cursor.fetchall()
-        self.close_connection()
-        return rows
+    def select_all_languages(self, api_call=False):
+        try:
+            self.open_connection()
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT LanguageId, Language FROM Languages')
+            if api_call == True:
+                rows = [dict((cursor.description[i][0], value) \
+                for i, value in enumerate(row)) for row in cursor.fetchall()]
+                cursor.close()      
+                return (rows[0] if rows else None) if False else rows
+            else:
+                rows = cursor.fetchall()
+                cursor.close()
+            return rows
+        finally:
+            self.close_connection()
+            
 
-    def select_all_genders(self):
-        self.open_connection()
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT GenderId, Gender FROM Genders')
-        rows = cursor.fetchall()
-        self.close_connection()
-        return rows
-
-    def select_all_blesses(self):
-        self.open_connection()
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT BlessId, GenderId, LanguageId, Bless FROM Blesses')
-        rows = cursor.fetchall()
-        self.close_connection()
-        return rows
-
-    def select_all_persons(self):
-        self.open_connection()
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT PersonId, FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour FROM Persons')
-        rows = cursor.fetchall()
-        self.close_connection()
-        return rows
+    def select_all_genders(self, api_call=False):
+        try:
+            self.open_connection()
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT GenderId, Gender FROM Genders')
+            if api_call == True:
+                rows = [dict((cursor.description[i][0], value) \
+                for i, value in enumerate(row)) for row in cursor.fetchall()]
+                cursor.close()      
+                return (rows[0] if rows else None) if False else rows
+            else:
+                rows = cursor.fetchall()
+                cursor.close()
+            return rows
+        finally:
+            self.close_connection()
+            
+            
+    def select_all_blesses(self, api_call=False):
+        try:
+            self.open_connection()
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT BlessId, GenderId, LanguageId, Bless FROM Blesses')
+            if api_call == True:
+                rows = [dict((cursor.description[i][0], value) \
+                for i, value in enumerate(row)) for row in cursor.fetchall()]
+                cursor.close()      
+                return (rows[0] if rows else None) if False else rows
+            else:
+                rows = cursor.fetchall()
+                cursor.close()
+            return rows
+        finally:
+            self.close_connection()
+            
+    def select_all_persons(self, api_call=False):
+        try:
+            self.open_connection()
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT PersonId, FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour FROM Persons')
+            if api_call == True:
+                rows = [dict((cursor.description[i][0], value) \
+                for i, value in enumerate(row)) for row in cursor.fetchall()]
+                cursor.close()      
+                return (rows[0] if rows else None) if False else rows
+            else:
+                rows = cursor.fetchall()
+                cursor.close()
+            return rows
+        finally:
+            self.close_connection()
 
 
 # Example usage:
