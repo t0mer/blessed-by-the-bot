@@ -13,6 +13,7 @@ from models.bless import Bless
 from models.gender import Gender
 from models.person import Person
 from models.language import Language
+from models.configuration import Configuration
 from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import UJSONResponse
 from fastapi.templating import Jinja2Templates
@@ -51,7 +52,6 @@ class Server:
                 "name": "Utils",
                 "description": "Utilitis API endpoints (Database backup/restore, Configuration, etc.)",
             },
-        
         ]
         self.app = FastAPI(title="Blessed by the bot | Tomer Klein", description="Whatsapp bot for automated blesses and whishes by @Tomer Klein", version='1.0.0', openapi_tags=self.tags_metadata, contact={"name": "Tomer Klein", "email": "tomer.klein@gmail.com", "url": "https://github.com/t0mer/blessed-by-the-bot"})
         self.app.add_route("/metrics", handle_metrics)
@@ -73,7 +73,6 @@ class Server:
             languages = self.db.select_all_languages(True)
             return JSONResponse(languages)
 
-
         @self.app.get("/genders/", tags=['Genders'], summary="Get the list of genders")
         def get_genders():
             genders = self.db.select_all_genders()
@@ -89,6 +88,10 @@ class Server:
             persons = self.db.select_all_persons()
             return JSONResponse(persons)
         
+        @self.app.get("/configuration/", tags=['Utils'], summary="Get the current configuration")
+        def get_configuration():
+            configuration = self.db.get_configuration(True)
+            return JSONResponse(configuration)      
 
         @self.app.delete("/languages/{language_id}",tags=['Languages'], summary="Delete the requested language")
         def delete_language(language_id: int):
@@ -100,7 +103,6 @@ class Server:
             self.db.delete_gender(gender_id=gender_id)
             return {"message": "Gender deleted successfully"}
 
-
         @self.app.delete("/blesses/{bless_id}", tags=['Blesses'], summary="Delete the requested bless")
         def delete_bless(bless_id: int):
             self.db.delete_bless(bless_id=bless_id)
@@ -110,6 +112,11 @@ class Server:
         def delete_person(person_id: int):
             self.db.delete_person(person_id=person_id)
             return {"message": "Person deleted successfully"}
+
+        @self.app.delete("/configuration", tags=['Utils'], summary="Delete the current configuration")
+        def delete_configuration():
+            self.db.delete_configuration()
+            return {"message": "Configuration deleted successfully"}
 
 
         @self.app.put("/languages/{language_id}", response_model=Language, tags=['Languages'], summary="Update the language name")
@@ -135,6 +142,14 @@ class Server:
             return {**person.dict(), "PersonId": person_id}
 
 
+        @self.app.put("/configuration/", response_model=Configuration, tags=['Utils'], summary="Update the configuration")
+        def update_configuration(configuration: Configuration):
+            self.db.update_configuration(whatsapp_api_session_name=configuration.WhatsappApiSessionName,whatsapp_api_token=configuration.WhatsappApiToken,
+                                         whatsapp_api_url=configuration.WhatsappApiUrl)
+            return {"message": "The configuration updated successfully."}
+
+
+
         @self.app.post("/languages/", response_model=Language,tags=['Languages'], summary="Add a new language to the languages list")
         def create_language(language: Language):
             language_id = self.db.insert_language(language=language.Language)
@@ -153,10 +168,11 @@ class Server:
             bless_id = self.db.insert_bless(gender_id=bless.GenderId,language_id=bless.LanguageId, bless=bless.Bless)
             return {**bless.dict(), "BlessId": bless_id}
 
-        @self.app.post("/persons/", response_model=Person, tags=['Persons'], summary="Add a new person to the persons list")
-        def create_person(person: Person):
-            person_id = self.db.insert_person(person.FirstName, person.LastName, person.BirthDate, person.GenderId, person.LanguageId, person.PhoneNumber, person.PreferredHour, person.Intro)
-            return {**person.dict(), "PersonId": person_id}
+        @self.app.post("/configuration/", tags=['Utils'], summary="Create configuration")
+        def create_configuration(configuration: Configuration):
+            person_id = self.db.insert_configurarion(whatsapp_api_session_name=configuration.WhatsappApiSessionName,whatsapp_api_token=configuration.WhatsappApiToken,
+                                         whatsapp_api_url=configuration.WhatsappApiUrl)
+            return {"message": "The configuration created successfully."}
 
 
 

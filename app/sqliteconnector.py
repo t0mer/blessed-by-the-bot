@@ -34,16 +34,14 @@ class SqliteConnector:
             cursor.execute('''
                         CREATE TABLE IF NOT EXISTS Languages (
                             LanguageId INTEGER PRIMARY KEY AUTOINCREMENT,
-                            Language TEXT NOT NULL UNIQUE
-                        )
+                            Language TEXT NOT NULL UNIQUE)
                         ''')
 
             cursor.execute('''
                         CREATE TABLE IF NOT EXISTS Genders (
                             GenderId INTEGER PRIMARY KEY AUTOINCREMENT,
-                            Gender TEXT NOT NULL UNIQUE
-                        )
-                        ''')
+                            Gender TEXT NOT NULL UNIQUE)
+                            ''')
 
             cursor.execute('''
                         CREATE TABLE IF NOT EXISTS Blesses (
@@ -52,9 +50,8 @@ class SqliteConnector:
                             LanguageId INTEGER,
                             Bless TEXT NOT NULL,
                             FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
-                            FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
-                        )
-                        ''')
+                            FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId))
+                            ''')
 
             cursor.execute('''
                         CREATE TABLE IF NOT EXISTS Persons (
@@ -68,10 +65,17 @@ class SqliteConnector:
                             PreferredHour INTEGER NOT NULL,
                             Intro TEXT NOT NULL,
                             FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
-                            FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
-                        )
+                            FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId))
+                            ''')
+            
+            cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS Configuration (
+                        ConfigId INTEGER PRIMARY KEY CHECK (ConfigId = 1),
+                        WhatsappApiUrl TEXT NOT NULL,
+                        WhatsappApiToken TEXT NOT NULL,
+                        WhatsappApiSessionName TEXT NOT NULL)
                         ''')
-
+            
             self.conn.commit()
             self.close_connection()
             logger.info("Tables created successfully")
@@ -108,7 +112,7 @@ class SqliteConnector:
         return self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour, intro),True)
 
     def insert_configurarion(self,whatsapp_api_url, whatsapp_api_token, whatsapp_api_session_name):
-        query = 'INSERT INTO Configuration (ConfigId, WhatsappApiUrl, WhatsappApiToken, WhatsappApiSessionName) VALUES (1, ?, ?, ?)'''
+        query = 'INSERT OR IGNORE INTO Configuration (ConfigId, WhatsappApiUrl, WhatsappApiToken, WhatsappApiSessionName) VALUES (1, ?, ?, ?)'''
         return self.execute_query(query, (whatsapp_api_url, whatsapp_api_token, whatsapp_api_session_name),True)
         
     
