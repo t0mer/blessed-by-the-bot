@@ -1,7 +1,11 @@
+import os
 import time
+import shutil
 import uvicorn
 import schedule
 import threading
+from zipfile import ZipFile
+from loguru import logger
 from pydantic import BaseModel
 from typing import Optional, List
 from sqliteconnector import SqliteConnector
@@ -9,9 +13,7 @@ from models.bless import Bless
 from models.gender import Gender
 from models.person import Person
 from models.language import Language
-
-
-from fastapi import FastAPI, Request, File, Form, UploadFile
+from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import UJSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
@@ -45,6 +47,10 @@ class Server:
                 "name": "Languages",
                 "description": "Languages API endpoints (Add, Update, Delete, Get)",
             },
+            {
+                "name": "Utils",
+                "description": "Utilitis API endpoints (Database backup/restore, Configuration, etc.)",
+            },
         
         ]
         self.app = FastAPI(title="Blessed by the bot | Tomer Klein", description="Whatsapp bot for automated blesses and whishes by @Tomer Klein", version='1.0.0', openapi_tags=self.tags_metadata, contact={"name": "Tomer Klein", "email": "tomer.klein@gmail.com", "url": "https://github.com/t0mer/blessed-by-the-bot"})
@@ -58,8 +64,10 @@ class Server:
             allow_methods=["*"],
             allow_headers=["*"],
         )    
-    
-    
+
+
+   
+            
         @self.app.get("/languages/",tags=['Languages'], summary="Get the list of languages")
         def get_languages():
             languages = self.db.select_all_languages(True)
@@ -149,6 +157,46 @@ class Server:
         def create_person(person: Person):
             person_id = self.db.insert_person(person.FirstName, person.LastName, person.BirthDate, person.GenderId, person.LanguageId, person.PhoneNumber, person.PreferredHour, person.Intro)
             return {**person.dict(), "PersonId": person_id}
+
+
+
+        @self.app.get("/backup", tags=['Utils'], summary="Create a database backup")
+        async def create_backup(background_tasks: BackgroundTasks):
+            zip_file = "backup.zip"
+            try:
+                with ZipFile(zip_file, 'w') as zipf:
+                    zipf.write(self.db.db_path)
+                return FileResponse(zip_file, media_type='application/zip', filename=zip_file)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            finally:
+                background_tasks.add_task(self.delete_file, zip_file)
+
+
+        @self.app.post("/restore", tags=['Utils'], summary="Restore the database")
+        async def restore_database(background_tasks: BackgroundTasks,file: UploadFile = File(...)):
+            zip_file = "restored.zip"
+            try:
+                if os.path.exists(self.db.db_path):
+                    os.remove(self.db.db_path)
+                with open(zip_file, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+                with ZipFile(zip_file, 'r') as zipf:
+                    zipf.extractall()
+                
+                return {"message": "Database restored successfully."}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            finally:
+                background_tasks.add_task(self.delete_file, zip_file)
+
+
+    def delete_file(self,file_path: str):
+        try:
+            os.remove(file_path)    
+        except Exception as e:
+            logger.warning(f"Error deleting file: {e}") 
+
         
     def start(self):
         uvicorn.run(self.app, host="0.0.0.0", port=8082)
