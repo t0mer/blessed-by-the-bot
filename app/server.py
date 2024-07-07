@@ -123,7 +123,7 @@ class Server:
         def update_person(person_id: int, person: Person):
             self.db.update_person(person_id=person_id,first_name=person.FirstName, last_name=person.LastName,
                                   birth_date=person.BirthDate,gender_id=person.GenderId,language_id=person.LanguageId,
-                                  phone_number=person.PhoneNumber,preferred_hour=person.PreferredHour)
+                                  phone_number=person.PhoneNumber,preferred_hour=person.PreferredHour, intro=person.Intro)
             return {**person.dict(), "PersonId": person_id}
 
 
@@ -147,7 +147,7 @@ class Server:
 
         @self.app.post("/persons/", response_model=Person, tags=['Persons'], summary="Add a new person to the persons list")
         def create_person(person: Person):
-            person_id = self.db.insert_person(person.FirstName, person.LastName, person.BirthDate, person.GenderId, person.LanguageId, person.PhoneNumber, person.PreferredHour)
+            person_id = self.db.insert_person(person.FirstName, person.LastName, person.BirthDate, person.GenderId, person.LanguageId, person.PhoneNumber, person.PreferredHour, person.Intro)
             return {**person.dict(), "PersonId": person_id}
         
     def start(self):

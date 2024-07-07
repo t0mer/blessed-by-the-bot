@@ -10,3 +10,4 @@ class Person(BaseModel):
     LanguageId: int
     PhoneNumber: str
     PreferredHour: Optional[int]
+    Intro: str

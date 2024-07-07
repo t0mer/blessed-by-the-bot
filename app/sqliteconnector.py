@@ -66,6 +66,7 @@ class SqliteConnector:
                             LanguageId INTEGER,
                             PhoneNumber TEXT NOT NULL,
                             PreferredHour INTEGER NOT NULL,
+                            Intro TEXT NOT NULL,
                             FOREIGN KEY(GenderId) REFERENCES Genders(GenderId),
                             FOREIGN KEY(LanguageId) REFERENCES Languages(LanguageId)
                         )
@@ -102,9 +103,9 @@ class SqliteConnector:
         query = 'INSERT INTO Blesses (GenderId, LanguageId, Bless) VALUES (?, ?, ?)'
         return self.execute_query(query, (gender_id, language_id, bless),True)
 
-    def insert_person(self, first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour):
-        query = 'INSERT INTO Persons (FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        return self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour),True)
+    def insert_person(self, first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour, intro):
+        query = 'INSERT INTO Persons (FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour, intro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        return self.execute_query(query, (first_name, last_name, birth_date, gender_id, language_id, phone_number, preferred_hour, intro),True)
 
     # Updates
 
@@ -132,7 +133,7 @@ class SqliteConnector:
         params.append(bless_id)
         self.execute_query(query, params)
 
-    def update_person(self, person_id, first_name=None, last_name=None, birth_date=None, gender_id=None, language_id=None, phone_number=None, preferred_hour=None):
+    def update_person(self, person_id, first_name=None, last_name=None, birth_date=None, gender_id=None, language_id=None, phone_number=None, preferred_hour=None, intro=None):
         query = 'UPDATE Persons SET '
         params = []
         if first_name:
@@ -156,6 +157,9 @@ class SqliteConnector:
         if preferred_hour is not None:
             query += 'PreferredHour=?, '
             params.append(preferred_hour)
+        if intro:
+            query += 'Intro=?, '
+            params.append(intro)
         query = query.rstrip(', ') + ' WHERE PersonId=?'
         params.append(person_id)
         self.execute_query(query, params)
@@ -239,7 +243,7 @@ class SqliteConnector:
         try:
             self.open_connection()
             cursor = self.conn.cursor()
-            cursor.execute('SELECT PersonId, FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour FROM Persons')
+            cursor.execute('SELECT PersonId, FirstName, LastName, BirthDate, GenderId, LanguageId, PhoneNumber, PreferredHour, Intro FROM Persons')
             if api_call == True:
                 rows = [dict((cursor.description[i][0], value) \
                 for i, value in enumerate(row)) for row in cursor.fetchall()]
