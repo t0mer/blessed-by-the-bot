@@ -8,3 +8,4 @@ python-multipart
 starlette_exporter
 cryptography==42.0.0
 starlette>=0.40.0 # not directly required, pinned by Snyk to avoid a vulnerability
+fastapi>=0.109.1 # not directly required, pinned by Snyk to avoid a vulnerability
