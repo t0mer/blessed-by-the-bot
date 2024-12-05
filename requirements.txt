@@ -10,3 +10,4 @@ cryptography==42.0.0
 starlette>=0.40.0 # not directly required, pinned by Snyk to avoid a vulnerability
 fastapi>=0.109.1 # not directly required, pinned by Snyk to avoid a vulnerability
 anyio>=4.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
+urllib3>=2.2.2 # not directly required, pinned by Snyk to avoid a vulnerability
