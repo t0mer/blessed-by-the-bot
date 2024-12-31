@@ -1,4 +1,4 @@
-FROM python:3.14.0a1-slim-bookworm
+FROM python:3.14.0a3-alpine3.20
 
 ENV API_KEY ""
 ENV PYTHONIOENCODING=utf-8
