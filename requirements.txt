@@ -6,7 +6,7 @@ aiofiles
 fastapi[all]
 python-multipart
 starlette_exporter
-cryptography==42.0.0
+cryptography==44.0.1
 starlette>=0.40.0 # not directly required, pinned by Snyk to avoid a vulnerability
 fastapi>=0.109.1 # not directly required, pinned by Snyk to avoid a vulnerability
 anyio>=4.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
