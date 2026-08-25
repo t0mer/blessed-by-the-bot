@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/config"
 	"github.com/t0mer/blessed-by-the-bot/internal/logging"
 	"github.com/t0mer/blessed-by-the-bot/internal/server"
+	"github.com/t0mer/blessed-by-the-bot/internal/store"
 )
 
 func newServer(t *testing.T) *server.Server {
@@ -100,5 +102,65 @@ func TestRunShutsDownOnContextCancel(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return within 5s of context cancellation")
+	}
+}
+
+func TestHealthzReportsDatabase(t *testing.T) {
+	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	s, err := server.New(server.Options{
+		Config:  &config.Config{Port: 0, DataDir: t.TempDir(), LogLevel: "error", Dev: true},
+		Logger:  logging.New("error", false),
+		Version: "2026.8.0",
+		Store:   st,
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Status   string `json:"status"`
+		Database string `json:"database"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Status != "ok" || body.Database != "ok" {
+		t.Errorf("status=%q database=%q, want both ok", body.Status, body.Database)
+	}
+}
+
+func TestHealthzIsUnhealthyWhenDatabaseIsClosed(t *testing.T) {
+	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := server.New(server.Options{
+		Config:  &config.Config{Port: 0, DataDir: t.TempDir(), LogLevel: "error", Dev: true},
+		Logger:  logging.New("error", false),
+		Version: "2026.8.0",
+		Store:   st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 when the database is unreachable", rec.Code)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,6 +22,8 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/crypto"
 	"github.com/t0mer/blessed-by-the-bot/internal/logging"
 	"github.com/t0mer/blessed-by-the-bot/internal/server"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
+	"github.com/t0mer/blessed-by-the-bot/internal/store"
 )
 
 // Injected at build time via -ldflags "-X main.version=...".
@@ -68,25 +71,61 @@ func run(cmd *cobra.Command) error {
 		log.Info("loaded config file", "path", cfg.ConfigFile)
 	}
 
-	if cfg.EncryptionKey != "" {
-		if _, err := crypto.New(cfg.EncryptionKey); err != nil {
-			return fmt.Errorf("validating %s: %w", config.EncryptionKeyEnv, err)
-		}
-	} else {
-		log.Warn("running without an encryption key; provider secrets will not be stored")
-	}
-
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		return fmt.Errorf("creating data dir %s: %w", cfg.DataDir, err)
 	}
 
-	srv, err := server.New(server.Options{Config: cfg, Logger: log, Version: version})
+	// --dev waives the BBTB_ENCRYPTION_KEY requirement, but settings still have
+	// to survive a restart, so fall back to a key persisted in the data dir.
+	keyB64 := cfg.EncryptionKey
+	if keyB64 == "" && cfg.Dev {
+		keyB64, err = crypto.LoadOrCreateDevKey(cfg.DataDir)
+		if err != nil {
+			return err
+		}
+		log.Warn("dev mode: using a generated encryption key from the data dir",
+			"file", filepath.Join(cfg.DataDir, crypto.DevKeyFile))
+	}
+	cipher, err := crypto.New(keyB64)
 	if err != nil {
-		return err
+		return fmt.Errorf("validating %s: %w", config.EncryptionKeyEnv, err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	dbPath := filepath.Join(cfg.DataDir, "blessedbot.db")
+	st, err := store.Open(ctx, dbPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := st.Close(); closeErr != nil {
+			log.Error("closing database", "error", closeErr)
+		}
+	}()
+	log.Info("database ready", "path", dbPath)
+
+	settingsSvc, err := settings.New(st, cipher)
+	if err != nil {
+		return err
+	}
+	current, err := settingsSvc.Load(ctx)
+	if err != nil {
+		return fmt.Errorf("loading settings: %w", err)
+	}
+	log.Info("settings loaded",
+		"provider", current.Provider,
+		"timezone", current.Scheduler.Timezone,
+		"send_time", current.Scheduler.SendTime,
+	)
+
+	srv, err := server.New(server.Options{
+		Config: cfg, Logger: log, Version: version, Store: st,
+	})
+	if err != nil {
+		return err
+	}
 
 	return srv.Run(ctx)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/config"
+	"github.com/t0mer/blessed-by-the-bot/internal/store"
 	"github.com/t0mer/blessed-by-the-bot/internal/webui"
 )
 
@@ -23,6 +24,7 @@ type Options struct {
 	Config  *config.Config
 	Logger  *slog.Logger
 	Version string
+	Store   *store.Store
 }
 
 // Server owns the HTTP router and listener lifecycle.
@@ -30,6 +32,7 @@ type Server struct {
 	cfg     *config.Config
 	log     *slog.Logger
 	version string
+	store   *store.Store
 	router  chi.Router
 	addr    string
 }
@@ -42,7 +45,7 @@ func New(opts Options) (*Server, error) {
 	if opts.Logger == nil {
 		return nil, errors.New("server: logger is required")
 	}
-	s := &Server{cfg: opts.Config, log: opts.Logger, version: opts.Version}
+	s := &Server{cfg: opts.Config, log: opts.Logger, version: opts.Version, store: opts.Store}
 	if err := s.routes(); err != nil {
 		return nil, err
 	}
@@ -80,11 +83,21 @@ func (s *Server) routes() error {
 	return nil
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":  "ok",
-		"version": s.version,
-	})
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	payload := map[string]string{"status": "ok", "version": s.version}
+	status := http.StatusOK
+
+	if s.store != nil {
+		if err := s.store.Ping(r.Context()); err != nil {
+			s.log.Error("health check: database unreachable", "error", err)
+			payload["status"] = "error"
+			payload["database"] = "error"
+			status = http.StatusServiceUnavailable
+		} else {
+			payload["database"] = "ok"
+		}
+	}
+	writeJSON(w, status, payload)
 }
 
 // Run listens on the configured port and blocks until ctx is cancelled, then
