@@ -17,6 +17,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/config"
 	"github.com/t0mer/blessed-by-the-bot/internal/crypto"
@@ -24,6 +25,8 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/provider"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider/factory"
 	"github.com/t0mer/blessed-by-the-bot/internal/server"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/scheduler"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
 )
@@ -133,6 +136,21 @@ func run(cmd *cobra.Command) error {
 		log.Info("whatsapp provider ready", "provider", providers.Name())
 	}
 
+	selector, err := blessing.NewSelector(st, log)
+	if err != nil {
+		return err
+	}
+	sched, err := scheduler.New(scheduler.Deps{
+		Store:     st,
+		Settings:  settingsSvc,
+		Providers: providers,
+		Blessings: selector,
+		Logger:    log,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Rebuilding on a settings change is what lets the user switch providers or
 	// fix a token from the UI without restarting the process (spec §4).
 	rebuild := func(_ context.Context, s *settings.Settings) error {
@@ -151,12 +169,18 @@ func run(cmd *cobra.Command) error {
 		Settings:  settingsSvc,
 		Providers: providers,
 		Rebuild:   rebuild,
+		Sender:    sched,
 	})
 	if err != nil {
 		return err
 	}
 
-	return srv.Run(ctx)
+	// The scheduler and the HTTP server share one context, so SIGTERM stops both
+	// and Wait blocks until in-flight sends finish (spec §6).
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error { return srv.Run(groupCtx) })
+	group.Go(func() error { return sched.Run(groupCtx) })
+	return group.Wait()
 }
 
 func newVersionCmd() *cobra.Command {

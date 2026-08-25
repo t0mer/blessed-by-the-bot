@@ -33,6 +33,10 @@ type Options struct {
 	// Rebuild re-applies the configuration to the active provider after a
 	// settings change. Nil leaves the running provider alone.
 	Rebuild func(ctx context.Context, s *settings.Settings) error
+
+	// Sender backs POST /contacts/{id}/send-now. Nil leaves that endpoint
+	// answering 501.
+	Sender handlers.Sender
 }
 
 // Server owns the HTTP router and listener lifecycle. Route handling lives in
@@ -62,6 +66,7 @@ func New(opts Options) (*Server, error) {
 		Logger:    opts.Logger,
 		Version:   opts.Version,
 		Rebuild:   opts.Rebuild,
+		Sender:    opts.Sender,
 	})
 	if err != nil {
 		return nil, err
