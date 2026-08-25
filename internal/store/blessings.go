@@ -140,3 +140,19 @@ func scanBlessing(sc scanner) (*Blessing, error) {
 	}
 	return &b, nil
 }
+
+// ApplySeedBlessings re-runs the starter-template seed from migration 0003.
+//
+// It exists for tests that clear the table to get a controlled set and then
+// need the real seed back to exercise fresh-install behaviour. Running it twice
+// duplicates the rows, so it is not something the application calls.
+func (s *Store) ApplySeedBlessings(ctx context.Context) error {
+	body, err := migrationsFS.ReadFile("migrations/0003_seed_blessings.sql")
+	if err != nil {
+		return fmt.Errorf("reading the blessing seed: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, string(body)); err != nil {
+		return fmt.Errorf("applying the blessing seed: %w", err)
+	}
+	return nil
+}

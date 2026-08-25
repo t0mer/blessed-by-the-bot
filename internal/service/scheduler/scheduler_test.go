@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -72,6 +73,7 @@ func at(t *testing.T, when time.Time, mutate ...func(*scheduler.Deps)) *harness 
 		t.Fatalf("opening store: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	clearBlessings(t, st)
 
 	key, err := crypto.GenerateKey()
 	if err != nil {
@@ -109,6 +111,30 @@ func at(t *testing.T, when time.Time, mutate ...func(*scheduler.Deps)) *harness 
 		t.Fatalf("building scheduler: %v", err)
 	}
 	return &harness{sched: sched, store: st, settings: svc, provider: fake}
+}
+
+// restoreSeed re-applies migration 0003 into a store the harness has cleared,
+// for the tests that specifically exercise fresh-install behaviour.
+func restoreSeed(t *testing.T, st *store.Store) {
+	t.Helper()
+	if err := st.ApplySeedBlessings(context.Background()); err != nil {
+		t.Fatalf("restoring the seeded blessings: %v", err)
+	}
+}
+
+// clearBlessings removes the starter templates seeded by migration 0003 so each
+// test controls exactly which ones exist.
+func clearBlessings(t *testing.T, st *store.Store) {
+	t.Helper()
+	all, err := st.ListBlessings(context.Background())
+	if err != nil {
+		t.Fatalf("listing seeded blessings: %v", err)
+	}
+	for _, b := range all {
+		if err := st.DeleteBlessing(context.Background(), b.ID); err != nil {
+			t.Fatalf("deleting seeded blessing %d: %v", b.ID, err)
+		}
+	}
 }
 
 func jerusalem(t *testing.T) *time.Location {
@@ -417,5 +443,53 @@ func TestTickFailsOnAnUnknownTimezone(t *testing.T) {
 
 	if err := h.sched.Tick(context.Background()); err == nil {
 		t.Fatal("want an error for an unloadable timezone")
+	}
+}
+
+// The point of seeding starter templates: a fresh install must be able to send
+// without the user first authoring a blessing. This is the one test that must
+// NOT clear the seed.
+func TestFreshInstallCanSendWithOnlyTheSeededBlessings(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 17, 9, 30, 0, 0, jerusalem(t)))
+	restoreSeed(t, h.store)
+
+	// A Hebrew female contact whose birthday is today — no blessing authored.
+	seedContact(t, h.store)
+
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	sent := h.provider.messages()
+	if len(sent) != 1 {
+		t.Fatalf("sent %d messages, want 1 straight out of the box", len(sent))
+	}
+	if !strings.Contains(sent[0].Text, "Dana") {
+		t.Errorf("text = %q, want the seeded template rendered with the name", sent[0].Text)
+	}
+	// The female-form template must win over the male one.
+	if strings.Contains(sent[0].Text, "שתזכה") {
+		t.Errorf("text = %q, want the female Hebrew form, not the male one", sent[0].Text)
+	}
+}
+
+// A male contact must get the male form, which is the whole reason the seed
+// carries both.
+func TestFreshInstallPicksTheGenderedForm(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 17, 9, 30, 0, 0, jerusalem(t)))
+	restoreSeed(t, h.store)
+	seedContact(t, h.store, func(c *store.Contact) {
+		c.Name, c.Gender = "Yossi", store.GenderMale
+	})
+
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	sent := h.provider.messages()
+	if len(sent) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(sent))
+	}
+	if strings.Contains(sent[0].Text, "שתזכי") || strings.Contains(sent[0].Text, "שתמשיכי") {
+		t.Errorf("text = %q, want a male Hebrew form", sent[0].Text)
 	}
 }

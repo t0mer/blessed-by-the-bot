@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
@@ -104,8 +105,16 @@ func TestBlessingLifecycle(t *testing.T) {
 	requireStatus(t, listed, http.StatusOK)
 	var all []store.Blessing
 	decodeInto(t, listed, &all)
-	if len(all) != 1 {
-		t.Fatalf("listed %d blessings, want 1", len(all))
+	// The starter seed is also in here, so look for the new row rather than
+	// assuming it is the only one.
+	found := false
+	for _, b := range all {
+		if b.ID == blessing.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the created blessing is missing from the list of %d", len(all))
 	}
 
 	update := validBlessing()
@@ -127,12 +136,69 @@ func TestBlessingLifecycle(t *testing.T) {
 	requireStatus(t, ta.do(t, http.MethodGet, path, nil), http.StatusNotFound)
 }
 
-func TestListBlessingsReturnsEmptyArray(t *testing.T) {
+// Migration 0003 seeds starter templates so a fresh install can actually send.
+// The UI must show them on first run rather than an empty editor.
+func TestListBlessingsReturnsTheSeededStarterSet(t *testing.T) {
 	ta := newTestAPI(t)
 
 	rec := ta.do(t, http.MethodGet, "/api/v1/blessings", nil)
 	requireStatus(t, rec, http.StatusOK)
-	if body := rec.Body.String(); body != "[]\n" {
-		t.Fatalf("body = %q, want an empty JSON array", body)
+
+	var got []store.Blessing
+	decodeInto(t, rec, &got)
+	if len(got) == 0 {
+		t.Fatal("want the seeded starter blessings, got none")
+	}
+
+	// Every event type needs cover, or a contact of that type has nothing to send.
+	types := map[string]bool{}
+	languages := map[string]bool{}
+	nameFree := map[string]bool{}
+	for _, b := range got {
+		types[b.EventType] = true
+		languages[b.Language] = true
+		if !strings.Contains(b.Text, "{{name}}") {
+			nameFree[b.EventType] = true
+		}
+	}
+	for _, want := range []string{"birthday", "wedding", "anniversary", "custom"} {
+		if !types[want] {
+			t.Errorf("no seeded template for event type %q", want)
+		}
+	}
+	for _, want := range []string{"he", "en"} {
+		if !languages[want] {
+			t.Errorf("no seeded template for language %q", want)
+		}
+	}
+	// Group echo can only use name-free templates; without one it can never fire.
+	for _, want := range []string{"birthday", "wedding", "anniversary"} {
+		if !nameFree[want] {
+			t.Errorf("no name-free seeded template for %q; group echo would have nothing to send", want)
+		}
+	}
+}
+
+// Hebrew greetings are grammatically gendered, so the seed must carry both forms
+// or half the contacts fall back to a neutral template.
+func TestSeededHebrewBirthdaysCoverBothGenders(t *testing.T) {
+	ta := newTestAPI(t)
+
+	rec := ta.do(t, http.MethodGet, "/api/v1/blessings", nil)
+	requireStatus(t, rec, http.StatusOK)
+
+	var got []store.Blessing
+	decodeInto(t, rec, &got)
+
+	genders := map[string]bool{}
+	for _, b := range got {
+		if b.EventType == store.EventBirthday && b.Language == "he" && b.Gender != nil {
+			genders[*b.Gender] = true
+		}
+	}
+	for _, want := range []string{store.GenderMale, store.GenderFemale} {
+		if !genders[want] {
+			t.Errorf("no seeded Hebrew birthday template for gender %q", want)
+		}
 	}
 }

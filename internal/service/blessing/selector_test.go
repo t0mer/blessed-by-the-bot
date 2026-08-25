@@ -19,7 +19,23 @@ func newStore(t *testing.T) *store.Store {
 		t.Fatalf("opening store: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	clearBlessings(t, st)
 	return st
+}
+
+// clearBlessings removes the starter templates seeded by migration 0003 so each
+// test controls exactly which ones exist. A separate test covers the seed.
+func clearBlessings(t *testing.T, st *store.Store) {
+	t.Helper()
+	all, err := st.ListBlessings(context.Background())
+	if err != nil {
+		t.Fatalf("listing seeded blessings: %v", err)
+	}
+	for _, b := range all {
+		if err := st.DeleteBlessing(context.Background(), b.ID); err != nil {
+			t.Fatalf("deleting seeded blessing %d: %v", b.ID, err)
+		}
+	}
 }
 
 func newSelector(t *testing.T, st *store.Store) *blessing.Selector {

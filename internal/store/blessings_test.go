@@ -9,6 +9,23 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
 )
 
+// clearBlessings removes the starter templates seeded by migration 0003 so a
+// test can control exactly which ones exist. The seed is real product
+// behaviour — a fresh install must be able to send — but it makes "the only
+// template is the one I just added" false by default.
+func clearBlessings(t *testing.T, st *store.Store) {
+	t.Helper()
+	all, err := st.ListBlessings(context.Background())
+	if err != nil {
+		t.Fatalf("listing seeded blessings: %v", err)
+	}
+	for _, b := range all {
+		if err := st.DeleteBlessing(context.Background(), b.ID); err != nil {
+			t.Fatalf("deleting seeded blessing %d: %v", b.ID, err)
+		}
+	}
+}
+
 func sampleBlessing() *store.Blessing {
 	return &store.Blessing{
 		EventType: store.EventBirthday,
@@ -130,6 +147,7 @@ func TestDeleteBlessing(t *testing.T) {
 
 func TestFindBlessingsFiltersByEventTypeAndLanguage(t *testing.T) {
 	s := openTestStore(t)
+	clearBlessings(t, s)
 	ctx := context.Background()
 
 	match := sampleBlessing()
@@ -159,6 +177,7 @@ func TestFindBlessingsFiltersByEventTypeAndLanguage(t *testing.T) {
 
 func TestFindBlessingsExcludesDisabled(t *testing.T) {
 	s := openTestStore(t)
+	clearBlessings(t, s)
 	ctx := context.Background()
 
 	disabled := sampleBlessing()
