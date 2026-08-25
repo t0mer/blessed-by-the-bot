@@ -1,0 +1,68 @@
+version: 2
+
+project_name: blessedbot
+
+# The frontend must exist before the Go build: internal/webui embeds it, and a
+# release built from the tracked placeholder would ship a "UI not built" page.
+before:
+  hooks:
+    - go mod tidy
+    - sh -c "cd web && npm ci && npm run build"
+
+builds:
+  - id: blessedbot
+    main: ./cmd/blessedbot
+    binary: blessedbot
+    env:
+      # Pure Go throughout — modernc.org/sqlite included — which is what makes
+      # the scratch image and every cross-compile target work.
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64, arm]
+    goarm: ["7"]
+    ignore:
+      # 32-bit ARM is a Raspberry Pi concern; macOS and Windows never need it.
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+      - config.example.yaml
+      - docs/**/*
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
+  prerelease: auto

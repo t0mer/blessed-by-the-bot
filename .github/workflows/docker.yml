@@ -1,0 +1,78 @@
+name: Docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (blank = auto-increment YYYY.M.PATCH from the latest tag)"
+        required: false
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: write # to push the version tag that drives auto-increment
+
+jobs:
+  docker:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # all tags, to compute or read the version
+
+      - name: Resolve version
+        id: version
+        env:
+          # Workflow inputs go through env, never straight into the shell.
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          NEEDS_TAG=true
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ "$EVENT_NAME" = "workflow_run" ]; then
+            # The Release workflow already tagged this commit.
+            VERSION="$(git describe --tags --abbrev=0)"
+            NEEDS_TAG=false
+          else
+            VERSION="$(./scripts/next-version.sh)"
+          fi
+          [ -n "$VERSION" ] || { echo "::error::could not resolve a version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "needs_tag=$NEEDS_TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            techblog/blessed-by-the-bot:latest
+            techblog/blessed-by-the-bot:${{ steps.version.outputs.version }}
+
+      # Tag AFTER a successful push so the next manual run increments. Skipped
+      # for Release-driven runs, which reuse the tag the Release already made.
+      - name: Tag published version
+        if: steps.version.outputs.needs_tag == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$VERSION"
+          git push origin "$VERSION"
