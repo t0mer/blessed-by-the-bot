@@ -96,6 +96,17 @@ func (a *API) Routes() chi.Router {
 	r.MethodNotAllowed(MethodNotAllowedJSON)
 
 	r.Get("/healthz", a.Health)
+
+	// chi maps the "/" pattern inside Route to the bare prefix, so
+	// GET /api/v1/contacts matches without a redirect. Do not add
+	// middleware.StripSlashes globally — it would change webhook paths too.
+	r.Route("/contacts", func(cr chi.Router) {
+		cr.Get("/", a.listContacts)
+		cr.Post("/", a.createContact)
+		cr.Get("/{id}", a.getContact)
+		cr.Put("/{id}", a.updateContact)
+		cr.Delete("/{id}", a.deleteContact)
+	})
 	return r
 }
 
