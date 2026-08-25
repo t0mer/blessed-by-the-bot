@@ -42,6 +42,9 @@ Every error — validation, not-found, provider failure — uses one shape:
 | `invalid_query` | 400 | A query parameter is malformed. |
 | `validation_failed` | 422 | One or more fields were rejected; see `fields`. |
 | `conflict` | 409 | A uniqueness constraint was violated. |
+| `already_sent` | 409 | This contact already got their blessing this event year; use `force=true`. |
+| `contact_disabled` | 409 | The contact is disabled, so nothing was sent. |
+| `no_blessing` | 422 | No template matches this contact — add one under Blessings. |
 | `unauthorized` | 401 | Webhook authentication failed. |
 | `provider_unavailable` | 503 | No WhatsApp provider is configured. |
 | `provider_failed` | 502 | The provider was reached but returned an error. |
@@ -456,7 +459,10 @@ Response entries:
 | `event_year` | integer \| null | Dedupe key for scheduled sends: one successful send per contact per year. |
 | `sent_at` | string | RFC 3339, UTC. |
 
-An empty log returns `[]`, never `null`.
+An empty log returns `[]`, never `null`. Rows are written by the scheduler on
+every send attempt — **successes and failures both**. Only a successful row with
+a non-null `event_year` counts toward the yearly dedupe, which is why a failed
+send is retried on the next tick for the rest of that day.
 
 ```console
 $ curl '.../api/v1/history?kind=telepathy'
@@ -475,19 +481,33 @@ $ curl '.../api/v1/history?kind=telepathy'
 |---|---|---|---|
 | `force` | boolean | `false` | `true` also bypasses the once-per-year dedupe. |
 
-Bypasses the scheduled send time. With `force=false` the once-per-year dedupe
-still applies, so a contact who already received this year's blessing gets
-nothing. On success the created send-log entry is returned.
+Sends straight away, ignoring **both** the event date and the send time — you
+asked for it, so neither is relevant. Blessing selection is identical to a
+scheduled send: same targeting tiers, same language fallback, same `{{name}}`
+substitution, and it goes through the same rate limiter.
 
-**Not yet implemented.** The blessing engine arrives in Phase 5. Until then the
-route exists and answers honestly:
+The once-per-year dedupe still applies unless `force=true`, so the button cannot
+spam someone:
 
 ```console
 $ curl -X POST .../api/v1/contacts/1/send-now
-{"error":{"code":"not_implemented","message":"the blessing engine is not running yet"}}
+{"error":{"code":"already_sent","message":"this contact already received a blessing this year; use force=true to send anyway"}}
 ```
 
-The UI should render the button as disabled when this returns `501`.
+A forced resend is recorded with a **null `event_year`**. It is history, not a
+dedupe key: the original scheduled send still counts for the year, so the tick
+loop stays quiet afterwards.
+
+```console
+$ curl -X POST '.../api/v1/contacts/1/send-now?force=true'
+{"id":2,"kind":"scheduled","contact_id":1,"blessing_id":1,"provider":"gowa",
+ "chat_id":"972501234567@c.us","status":"sent","error":null,"event_year":null,
+ "sent_at":"2026-08-25T18:51:02.117Z"}
+```
+
+Other outcomes: `404` if the contact does not exist, `409 contact_disabled` if
+it is muted, `422 no_blessing` if no template matches, and `503` if no provider
+is configured.
 
 ---
 
