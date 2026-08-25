@@ -107,6 +107,14 @@ func (a *API) Routes() chi.Router {
 		cr.Put("/{id}", a.updateContact)
 		cr.Delete("/{id}", a.deleteContact)
 	})
+
+	r.Route("/blessings", func(br chi.Router) {
+		br.Get("/", a.listBlessings)
+		br.Post("/", a.createBlessing)
+		br.Get("/{id}", a.getBlessing)
+		br.Put("/{id}", a.updateBlessing)
+		br.Delete("/{id}", a.deleteBlessing)
+	})
 	return r
 }
 
