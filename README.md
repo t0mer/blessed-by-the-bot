@@ -9,7 +9,7 @@ frontend container.
 
 > **Status:** ground-up Go rewrite in progress. The scheduler, WhatsApp
 > providers and web UI land in subsequent phases; this revision ships the
-> server skeleton.
+> server skeleton and the SQLite persistence layer.
 
 ## Quick start
 
@@ -61,6 +61,20 @@ Runtime behaviour (WhatsApp provider, send times, group-echo thresholds) is
 configured in the web UI and stored in the database, not in the config file.
 See `config.example.yaml`.
 
+### Data directory
+
+`--data-dir` holds everything that must persist across restarts:
+
+| File | Contents |
+|---|---|
+| `blessedbot.db` | SQLite database (WAL mode) — contacts, blessings, groups, send history, settings |
+| `dev-encryption.key` | **`--dev` only.** A generated AES-256 key, mode `0600`, so development settings survive a restart. Production requires `BBTB_ENCRYPTION_KEY` instead. |
+
+Back this directory up, or mount it as a volume. Provider credentials are stored
+inside `blessedbot.db` encrypted with AES-256-GCM under your
+`BBTB_ENCRYPTION_KEY` — **losing that key makes them unrecoverable**, and they
+will need re-entering in the UI.
+
 ## Commands
 
 | Command | Purpose |
@@ -77,7 +91,7 @@ the container healthcheck invokes the binary itself.
 
 | Path | Purpose |
 |---|---|
-| `/healthz` | Liveness probe — `{"status":"ok","version":"…"}` |
+| `/healthz` | Liveness probe — `{"status":"ok","version":"…","database":"ok"}`; returns 503 when the database is unreachable |
 | `/api/v1/*` | JSON API |
 | `/*` | Embedded single-page web UI |
 
