@@ -4,24 +4,76 @@ Self-hosted WhatsApp bot that sends automated blessings — birthdays, wedding
 anniversaries and custom events — to your contacts on schedule, and joins in
 when a watched group starts congratulating someone.
 
-Single Go binary with an embedded web UI. No external database, no separate
-frontend container.
+A single Go binary with the web UI embedded. No external database, no separate
+frontend container, no cloud dependency beyond the WhatsApp provider you choose.
 
-> **Status:** ground-up Go rewrite in progress. The scheduler, WhatsApp
-> providers and web UI land in subsequent phases; this revision ships the
-> server skeleton and the SQLite persistence layer.
+![Dashboard](assets/screenshots/dashboard.png)
+
+## What it does
+
+**Scheduled blessings.** For every contact with an event today, at their send
+time, the bot picks a fitting template and sends it. Selection prefers a
+gender-matched template over a generic one — Hebrew greetings are grammatically
+gendered — then a relation match, and it steers away from repeating last year's
+message. Each contact gets exactly one blessing per event per year, enforced by
+the send log rather than by memory, so a restart never sends twice.
+
+**Group echo.** Watch a group, and when enough *different* people start
+congratulating someone, the bot joins in once and then goes quiet. One excited
+friend sending five messages counts as one voice. The blessing it posts in a
+group never contains a name placeholder, because it does not know whose birthday
+it is.
+
+Wish detection understands vocalised Hebrew: `מַזָּל טוֹב` matches the plain
+pattern `מזל טוב`, because text is normalized and combining marks are stripped
+before matching. Patterns ship for Hebrew and English and are editable in the UI.
+
+## Screenshots
+
+### Dashboard — dark mode
+![Dashboard in dark mode](assets/screenshots/dashboard-dark.png)
+
+### Contacts
+![Contacts](assets/screenshots/contacts.png)
+
+### Blessings
+Templates grouped by event type, with a live preview and targeting chips.
+![Blessings](assets/screenshots/blessings.png)
+
+### Groups and wish patterns
+![Groups](assets/screenshots/groups.png)
+
+### Settings
+Provider configuration with masked credentials, scheduler defaults and group
+echo tuning.
+![Settings](assets/screenshots/settings.png)
+
+### Hebrew, right-to-left
+The whole interface mirrors when the UI language is Hebrew. Blessing text
+auto-detects its own direction, so a Hebrew template reads correctly even with
+the interface in English.
+
+![Hebrew dashboard](assets/screenshots/dashboard-hebrew.png)
+![Hebrew contacts in dark mode](assets/screenshots/contacts-hebrew.png)
+
+### Mobile
+The UI is mobile-first — this is mostly used from a phone.
+
+<img src="assets/screenshots/mobile-contacts.png" alt="Contacts on a phone" width="320">
 
 ## Quick start
 
-```bash
-# Generate an encryption key for provider credentials at rest.
-export BBTB_ENCRYPTION_KEY="$(go run ./cmd/blessedbot genkey)"
+### Docker Compose (recommended)
 
-make build
-./bin/blessedbot
+```bash
+# Provider credentials are encrypted at rest with this key. Keep it: without it
+# they cannot be decrypted, and the app refuses to start.
+echo "BBTB_ENCRYPTION_KEY=$(docker run --rm techblog/blessed-by-the-bot genkey)" > .env
+
+docker compose up -d
 ```
 
-Open <http://localhost:8080>.
+Open <http://localhost:8080> and configure a provider under **Settings**.
 
 ### Docker
 
@@ -29,91 +81,124 @@ Open <http://localhost:8080>.
 docker run -d \
   --name blessedbot \
   -p 8080:8080 \
-  -e BBTB_ENCRYPTION_KEY="$(docker run --rm techblog/blessed-by-the-bot:latest genkey)" \
   -v blessedbot-data:/data \
+  -e BBTB_ENCRYPTION_KEY="$(docker run --rm techblog/blessed-by-the-bot genkey)" \
   techblog/blessed-by-the-bot:latest
 ```
 
-Or use the provided `docker-compose.yml`. Keep the `blessedbot-data` volume: it
-holds the SQLite database, including your encrypted provider credentials.
+### From source
 
-The image is built `FROM scratch`, runs as uid `65532`, and is published for
-`linux/amd64`, `linux/arm64` and `linux/arm/v7`.
+```bash
+make build-all   # builds the frontend, then the binary that embeds it
+export BBTB_ENCRYPTION_KEY="$(./bin/blessedbot genkey)"
+./bin/blessedbot
+```
+
+## First run
+
+The database ships with **starter blessing templates** (Hebrew and English, for
+birthdays, weddings and anniversaries) and **wish patterns**, so the bot can send
+before you have written anything. All of them are editable or deletable.
+
+You still need to:
+
+1. Choose and configure a provider under **Settings** — see
+   [docs/providers.md](docs/providers.md).
+2. Add contacts with their event dates.
+3. Optionally add groups to watch.
+
+## WhatsApp providers
+
+Both are implemented; pick one in the UI and switch at any time without a
+restart.
+
+| | **GreenAPI** | **GOWA** |
+|---|---|---|
+| Kind | Cloud service | Self-hosted ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)) |
+| Inbound | Polling *(default)* or webhook | Webhook, HMAC-signed |
+| Needs a public URL | No, when polling | No, if it can reach this app |
+
+Polling is the default because a home-lab deployment usually is not
+internet-exposed. Full setup for both: [docs/providers.md](docs/providers.md).
 
 ## Configuration
 
-Precedence: **command-line flags > environment variables > YAML config file > defaults.**
+Infrastructure settings come from flags, environment variables or a YAML file.
+Everything else — providers, send times, thresholds — lives in the database and
+is edited in the UI.
 
-| Flag | Environment variable | Default | Description |
+Precedence: **flag → environment → config file → default**.
+
+| Flag | Environment | Default | Purpose |
 |---|---|---|---|
-| `--config` | `BBTB_CONFIG` | `./config.yaml` if present | Path to the YAML config file |
-| `--port` | `BBTB_PORT` | `8080` | HTTP listening port |
+| `--port` | `BBTB_PORT` | `8080` | HTTP listen port |
 | `--data-dir` | `BBTB_DATA_DIR` | `./data` (`/data` in Docker) | SQLite database and state |
-| `--log-level` | `BBTB_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
-| `--dev` | — | `false` | Verbose text logs; encryption key not required |
-| — | `BBTB_ENCRYPTION_KEY` | *(required)* | Base64-encoded 32-byte AES-256 key |
+| `--log-level` | `BBTB_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `--config` | — | `./config.yaml` | Optional YAML config |
+| `--dev` | — | off | Verbose logs; waives the encryption-key requirement |
+| — | `BBTB_ENCRYPTION_KEY` | — | **Required.** Base64 AES-256 key. Env only — never a flag or config value, so it cannot end up in a shell history or a committed file |
 
-`BBTB_ENCRYPTION_KEY` is environment-only by design — it is never a flag and is
-never read from the config file. Without it the server refuses to start unless
-`--dev` is passed. Generate one with `blessedbot genkey`.
-
-Runtime behaviour (WhatsApp provider, send times, group-echo thresholds) is
-configured in the web UI and stored in the database, not in the config file.
-See `config.example.yaml`.
-
-### Data directory
-
-`--data-dir` holds everything that must persist across restarts:
-
-| File | Contents |
-|---|---|
-| `blessedbot.db` | SQLite database (WAL mode) — contacts, blessings, groups, send history, settings |
-| `dev-encryption.key` | **`--dev` only.** A generated AES-256 key, mode `0600`, so development settings survive a restart. Production requires `BBTB_ENCRYPTION_KEY` instead. |
-
-Back this directory up, or mount it as a volume. Provider credentials are stored
-inside `blessedbot.db` encrypted with AES-256-GCM under your
-`BBTB_ENCRYPTION_KEY` — **losing that key makes them unrecoverable**, and they
-will need re-entering in the UI.
-
-## Commands
+### Commands
 
 | Command | Purpose |
 |---|---|
 | `blessedbot` | Run the server |
-| `blessedbot version` | Print the build version |
-| `blessedbot genkey` | Generate a `BBTB_ENCRYPTION_KEY` value |
-| `blessedbot healthcheck --url <url>` | Probe `/healthz`; exits non-zero when unhealthy |
-
-`healthcheck` exists because the `scratch` image has no shell and no `curl` —
-the container healthcheck invokes the binary itself.
+| `blessedbot genkey` | Generate a `BBTB_ENCRYPTION_KEY` |
+| `blessedbot version` | Print the version |
+| `blessedbot healthcheck` | Probe `/healthz`; exits non-zero when unhealthy |
 
 ## Endpoints
 
 | Path | Purpose |
 |---|---|
-| `/healthz` | Liveness probe — `{"status":"ok","version":"…","database":"ok"}`; returns 503 when the database is unreachable |
-| `/api/v1/*` | JSON API |
-| `/*` | Embedded single-page web UI |
+| `/` | Web UI |
+| `/api/v1/…` | REST API — [docs/api.md](docs/api.md) |
+| `/webhooks/greenapi`, `/webhooks/gowa` | Provider callbacks |
+| `/healthz` | Liveness, including a database ping |
+| `/metrics` | Prometheus metrics |
 
-API errors use a consistent envelope:
+### Metrics
 
-```json
-{ "error": { "code": "not_found", "message": "resource not found" } }
-```
+| Metric | Labels |
+|---|---|
+| `blessedbot_messages_total` | `provider`, `kind`, `outcome` |
+| `blessedbot_webhooks_total` | `provider`, `result` |
+| `blessedbot_wishes_matched_total` | `chat_id` |
+| `blessedbot_group_echoes_total` | `chat_id`, `outcome` |
+| `blessedbot_scheduler_ticks_total` | `result` |
+| `blessedbot_provider_request_seconds` | `provider`, `outcome` |
+
+Series with known labels are created at startup, so a quiet instance reports
+`0` rather than no data — an alert on failures can fire from the first scrape.
+
+## Security
+
+- Provider credentials are **encrypted at rest with AES-256-GCM**. The API
+  returns `••••` for a stored secret and never the value; sending the mask back
+  means "unchanged".
+- GOWA webhooks require a valid HMAC signature and **fail closed**: with no
+  secret configured, every webhook is rejected.
+- The container runs as a non-root user from a `scratch` base — no shell, no
+  package manager, ~16 MB.
+- There is **no authentication on the API in v1**. It is built for a LAN or
+  home-lab deployment; do not expose it to the internet without a reverse proxy
+  that adds authentication.
 
 ## Development
 
 ```bash
-make lint    # go vet + golangci-lint
-make test    # go test ./...
-make build   # bin/blessedbot
-make run     # go run with --dev
-make docker  # build the scratch image
+make dev          # API + Vite dev server with hot reload, on :5173
+make test         # go test ./...
+make test-race    # race detector (needs cgo; shipped builds are CGO_ENABLED=0)
+make lint         # go vet + golangci-lint
+make web          # build the frontend into internal/webui/dist
+make build-all    # frontend + binary
+make docker       # build the image locally
 ```
 
-Everything ships with `CGO_ENABLED=0`. The race detector (`make test-race`)
-is the one exception — it requires cgo.
+Stack: Go 1.25, chi, `modernc.org/sqlite` (pure Go — no cgo anywhere),
+React + Vite + TypeScript + Tailwind.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
