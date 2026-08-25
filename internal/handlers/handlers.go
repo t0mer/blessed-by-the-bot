@@ -139,6 +139,11 @@ func (a *API) Routes() chi.Router {
 
 	r.Get("/settings", a.getSettings)
 	r.Put("/settings", a.putSettings)
+
+	r.Route("/provider", func(pr chi.Router) {
+		pr.Get("/status", a.providerStatus)
+		pr.Post("/test", a.providerTest)
+	})
 	return r
 }
 
