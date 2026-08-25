@@ -58,6 +58,13 @@ type IncomingMessage struct {
 	Text       string
 	Timestamp  time.Time
 	MessageID  string
+
+	// FromMe marks a message the bot itself sent. CLAUDE.md §4 does not list it,
+	// but §7 requires the echo engine to ignore the bot's own messages — and a
+	// blessing the bot posts ("מזל טוב") matches the wish patterns, so without
+	// this the bot would count itself as a well-wisher. Providers that do not
+	// report it leave it false; see the per-provider notes in docs/providers.md.
+	FromMe bool
 }
 
 // Manager holds the active provider behind a mutex so a settings change can

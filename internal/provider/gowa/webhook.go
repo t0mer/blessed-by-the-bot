@@ -64,6 +64,9 @@ type event struct {
 		ChatID    string `json:"chat_id"`
 		From      string `json:"from"`
 		PushName  string `json:"pushname"`
+		FromMe    bool   `json:"from_me"`
+		FromMeAlt bool   `json:"fromMe"`
+		IsFromMe  bool   `json:"is_from_me"`
 		Timestamp int64  `json:"timestamp"`
 		Message   struct {
 			Text         string `json:"text"`
@@ -103,6 +106,8 @@ func ParseWebhook(body []byte) (*provider.IncomingMessage, bool, error) {
 		Text:       text,
 		Timestamp:  time.Unix(e.Payload.Timestamp, 0).UTC(),
 		MessageID:  e.Payload.ID,
+		// GOWA has spelled this flag three ways across releases; accept any.
+		FromMe: e.Payload.FromMe || e.Payload.FromMeAlt || e.Payload.IsFromMe,
 	}, true, nil
 }
 

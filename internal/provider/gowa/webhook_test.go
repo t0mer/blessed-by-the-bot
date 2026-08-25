@@ -204,3 +204,34 @@ func TestParseWebhookRejectsMalformedJSON(t *testing.T) {
 		t.Fatal("malformed JSON accepted")
 	}
 }
+
+// The bot's own blessing matches the wish patterns, so a self-sent message that
+// slipped through would make the bot count itself as a well-wisher.
+func TestParseWebhookMarksSelfSentMessages(t *testing.T) {
+	for _, field := range []string{"from_me", "fromMe", "is_from_me"} {
+		body := `{"event":"message","payload":{"id":"X","chat_id":"1@g.us",
+			"from":"972501234567@s.whatsapp.net in 1@g.us","` + field + `":true,
+			"message":{"text":"מזל טוב"}}}`
+
+		msg, handled, err := gowa.ParseWebhook([]byte(body))
+		if err != nil || !handled {
+			t.Fatalf("%s: handled=%v err=%v", field, handled, err)
+		}
+		if !msg.FromMe {
+			t.Errorf("%s: want FromMe true", field)
+		}
+	}
+}
+
+func TestParseWebhookLeavesFromMeFalseForOthers(t *testing.T) {
+	body := `{"event":"message","payload":{"id":"X","chat_id":"1@g.us",
+		"from":"972501234567@s.whatsapp.net in 1@g.us","message":{"text":"מזל טוב"}}}`
+
+	msg, _, err := gowa.ParseWebhook([]byte(body))
+	if err != nil {
+		t.Fatalf("ParseWebhook: %v", err)
+	}
+	if msg.FromMe {
+		t.Fatal("want FromMe false for someone else's message")
+	}
+}
