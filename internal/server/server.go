@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,24 +14,34 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/config"
+	"github.com/t0mer/blessed-by-the-bot/internal/handlers"
+	"github.com/t0mer/blessed-by-the-bot/internal/provider"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
 	"github.com/t0mer/blessed-by-the-bot/internal/webui"
 )
 
 // Options are the dependencies New needs.
 type Options struct {
-	Config  *config.Config
-	Logger  *slog.Logger
-	Version string
-	Store   *store.Store
+	Config    *config.Config
+	Logger    *slog.Logger
+	Version   string
+	Store     *store.Store
+	Settings  *settings.Service
+	Providers *provider.Manager
+
+	// Rebuild re-applies the configuration to the active provider after a
+	// settings change. Nil leaves the running provider alone.
+	Rebuild func(ctx context.Context, s *settings.Settings) error
 }
 
-// Server owns the HTTP router and listener lifecycle.
+// Server owns the HTTP router and listener lifecycle. Route handling lives in
+// internal/handlers; this type is wiring only.
 type Server struct {
 	cfg     *config.Config
 	log     *slog.Logger
-	version string
-	store   *store.Store
+	api     *handlers.API
+	version string // for the startup log line only; the API owns /healthz
 	router  chi.Router
 	addr    string
 }
@@ -45,7 +54,20 @@ func New(opts Options) (*Server, error) {
 	if opts.Logger == nil {
 		return nil, errors.New("server: logger is required")
 	}
-	s := &Server{cfg: opts.Config, log: opts.Logger, version: opts.Version, store: opts.Store}
+
+	api, err := handlers.New(handlers.Deps{
+		Store:     opts.Store,
+		Settings:  opts.Settings,
+		Providers: opts.Providers,
+		Logger:    opts.Logger,
+		Version:   opts.Version,
+		Rebuild:   opts.Rebuild,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	s := &Server{cfg: opts.Config, log: opts.Logger, api: api, version: opts.Version}
 	if err := s.routes(); err != nil {
 		return nil, err
 	}
@@ -65,39 +87,23 @@ func (s *Server) routes() error {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	r.Get("/healthz", s.handleHealth)
+	// Root health for the container healthcheck; the same handler also serves
+	// /api/v1/healthz inside the API router.
+	r.Get("/healthz", s.api.Health)
 
-	r.Route("/api/v1", func(api chi.Router) {
-		api.Get("/healthz", s.handleHealth)
-		api.NotFound(notFoundJSON)
-		api.MethodNotAllowed(methodNotAllowedJSON)
-	})
+	r.Mount("/api/v1", s.api.Routes())
+	r.Mount("/webhooks", s.api.WebhookRoutes())
 
 	ui, err := webui.Handler()
 	if err != nil {
 		return fmt.Errorf("building ui handler: %w", err)
 	}
+	// Anything not matched above is a client-side route: serve the SPA so a deep
+	// link such as /settings survives a refresh.
 	r.NotFound(ui.ServeHTTP)
 
 	s.router = r
 	return nil
-}
-
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	payload := map[string]string{"status": "ok", "version": s.version}
-	status := http.StatusOK
-
-	if s.store != nil {
-		if err := s.store.Ping(r.Context()); err != nil {
-			s.log.Error("health check: database unreachable", "error", err)
-			payload["status"] = "error"
-			payload["database"] = "error"
-			status = http.StatusServiceUnavailable
-		} else {
-			payload["database"] = "ok"
-		}
-	}
-	writeJSON(w, status, payload)
 }
 
 // Run listens on the configured port and blocks until ctx is cancelled, then
@@ -157,27 +163,4 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 			"request_id", middleware.GetReqID(r.Context()),
 		)
 	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-type errorEnvelope struct {
-	Error errorBody `json:"error"`
-}
-
-type errorBody struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func notFoundJSON(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusNotFound, errorEnvelope{errorBody{"not_found", "resource not found"}})
-}
-
-func methodNotAllowedJSON(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusMethodNotAllowed, errorEnvelope{errorBody{"method_not_allowed", "method not allowed"}})
 }

@@ -133,8 +133,24 @@ func run(cmd *cobra.Command) error {
 		log.Info("whatsapp provider ready", "provider", providers.Name())
 	}
 
+	// Rebuilding on a settings change is what lets the user switch providers or
+	// fix a token from the UI without restarting the process (spec §4).
+	rebuild := func(_ context.Context, s *settings.Settings) error {
+		if err := factory.Rebuild(providers, s, transport, log); err != nil {
+			return err
+		}
+		log.Info("whatsapp provider reconfigured", "provider", providers.Name())
+		return nil
+	}
+
 	srv, err := server.New(server.Options{
-		Config: cfg, Logger: log, Version: version, Store: st,
+		Config:    cfg,
+		Logger:    log,
+		Version:   version,
+		Store:     st,
+		Settings:  settingsSvc,
+		Providers: providers,
+		Rebuild:   rebuild,
 	})
 	if err != nil {
 		return err
