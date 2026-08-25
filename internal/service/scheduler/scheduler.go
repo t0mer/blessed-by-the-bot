@@ -196,6 +196,7 @@ func (s *Scheduler) deliver(ctx context.Context, c *store.Contact, eventYear *in
 	entry := &store.SendLogEntry{
 		Kind: store.KindScheduled, ContactID: &c.ID, BlessingID: &chosen.ID,
 		Provider: active.Name(), ChatID: chatID, EventYear: eventYear,
+		SentAt: s.now().UTC(),
 	}
 
 	if _, sendErr := active.SendText(ctx, chatID, text); sendErr != nil {
