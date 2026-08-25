@@ -136,6 +136,9 @@ func (a *API) Routes() chi.Router {
 		wr.Put("/{id}", a.updateWishPattern)
 		wr.Delete("/{id}", a.deleteWishPattern)
 	})
+
+	r.Get("/settings", a.getSettings)
+	r.Put("/settings", a.putSettings)
 	return r
 }
 
