@@ -15,6 +15,49 @@ type settingsResponse struct {
 	ProviderError string `json:"provider_error,omitempty"`
 }
 
+// settingsRequest is the PUT payload. Every section is a pointer so the handler
+// can tell "the client did not mention this" from "the client sent an empty
+// one": an absent section keeps its stored value, rather than being reset to the
+// zero value. Without that distinction a client editing only the provider
+// selection would silently wipe both providers' credentials, because an empty
+// secret means "clear this".
+type settingsRequest struct {
+	Provider  *string                     `json:"provider"`
+	GreenAPI  *settings.GreenAPIConfig    `json:"greenapi"`
+	GOWA      *settings.GOWAConfig        `json:"gowa"`
+	Scheduler *settings.SchedulerSettings `json:"scheduler"`
+	GroupEcho *settings.GroupEchoSettings `json:"group_echo"`
+
+	// Accepted and ignored. A GET whose rebuild failed returns provider_error,
+	// and the SPA re-submits the document it was given; rejecting it as an
+	// unknown field would make that round-trip fail.
+	ProviderError string `json:"provider_error"`
+}
+
+// merge lays the sections the client sent over base, which is the current
+// masked configuration. Basing the merge on the masked form keeps plaintext
+// secrets out of this layer entirely: an untouched secret arrives at Save still
+// carrying the mask, which Save resolves back to the stored value.
+func (req *settingsRequest) merge(base *settings.Settings) *settings.Settings {
+	out := *base
+	if req.Provider != nil {
+		out.Provider = *req.Provider
+	}
+	if req.GreenAPI != nil {
+		out.GreenAPI = *req.GreenAPI
+	}
+	if req.GOWA != nil {
+		out.GOWA = *req.GOWA
+	}
+	if req.Scheduler != nil {
+		out.Scheduler = *req.Scheduler
+	}
+	if req.GroupEcho != nil {
+		out.GroupEcho = *req.GroupEcho
+	}
+	return &out
+}
+
 func (a *API) getSettings(w http.ResponseWriter, r *http.Request) {
 	masked, err := a.settings.LoadMasked(r.Context())
 	if err != nil {
@@ -30,13 +73,20 @@ func (a *API) getSettings(w http.ResponseWriter, r *http.Request) {
 // not pre-process the payload: rewriting a masked secret here would defeat the
 // "PUT with the mask means unchanged" contract.
 func (a *API) putSettings(w http.ResponseWriter, r *http.Request) {
-	var incoming settings.Settings
-	if err := decodeJSON(w, r, &incoming); err != nil {
+	var req settingsRequest
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, a.log, err)
 		return
 	}
 
-	if err := a.settings.Save(r.Context(), &incoming); err != nil {
+	base, err := a.settings.LoadMasked(r.Context())
+	if err != nil {
+		writeError(w, a.log, err)
+		return
+	}
+	incoming := req.merge(base)
+
+	if err := a.settings.Save(r.Context(), incoming); err != nil {
 		// Only a validation failure is the client's to fix, and only its text is
 		// safe to echo — it names the offending setting and nothing else. A store
 		// or cipher failure falls through to writeError, which logs the detail

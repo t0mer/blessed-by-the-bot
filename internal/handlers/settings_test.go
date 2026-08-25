@@ -276,3 +276,95 @@ func TestPutSettingsStoreFailureIs500AndLeaksNothing(t *testing.T) {
 		t.Fatalf("internal detail leaked: %s", body)
 	}
 }
+
+// A GET whose rebuild failed carries provider_error. The SPA re-submits the
+// document it was handed, so PUT must accept its own response shape.
+func TestSettingsGetResponseIsAcceptedByPut(t *testing.T) {
+	ta := newTestAPI(t, func(d *Deps) {
+		d.Rebuild = func(context.Context, *settings.Settings) error {
+			return errors.New("instance id is not a number")
+		}
+	})
+
+	first := ta.do(t, http.MethodPut, "/api/v1/settings", configuredSettings())
+	requireStatus(t, first, http.StatusOK)
+
+	var echoed map[string]any
+	decodeInto(t, first, &echoed)
+	if _, ok := echoed["provider_error"]; !ok {
+		t.Fatal("precondition: want provider_error in the response")
+	}
+
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings", echoed), http.StatusOK)
+}
+
+// Omitting a section must not destroy it. A client switching providers sends
+// only the fields it edited; wiping the other provider's credentials — which an
+// empty secret does — would be silent data loss.
+func TestPutSettingsOmittedSectionKeepsStoredValues(t *testing.T) {
+	ta := newTestAPI(t)
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings", configuredSettings()), http.StatusOK)
+
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings", `{"provider":"gowa"}`), http.StatusOK)
+
+	stored, err := ta.settings.Load(context.Background())
+	if err != nil {
+		t.Fatalf("loading settings: %v", err)
+	}
+	if stored.Provider != settings.ProviderGOWA {
+		t.Errorf("provider = %q, want the edit applied", stored.Provider)
+	}
+	if stored.GreenAPI.APIToken != "super-secret-token" {
+		t.Errorf("greenapi api_token = %q, want it preserved", stored.GreenAPI.APIToken)
+	}
+	if stored.GreenAPI.IDInstance != "7103123456" {
+		t.Errorf("greenapi id_instance = %q, want it preserved", stored.GreenAPI.IDInstance)
+	}
+	if stored.GOWA.Password != "gowa-password" {
+		t.Errorf("gowa password = %q, want it preserved", stored.GOWA.Password)
+	}
+	if stored.Scheduler.SendTime != "09:00" {
+		t.Errorf("send_time = %q, want it preserved", stored.Scheduler.SendTime)
+	}
+}
+
+// A section sent as null is "not mentioned", not "reset to zero".
+func TestPutSettingsNullSectionKeepsStoredValues(t *testing.T) {
+	ta := newTestAPI(t)
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings", configuredSettings()), http.StatusOK)
+
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings",
+		`{"greenapi":null,"scheduler":{"timezone":"UTC","send_time":"10:00"}}`), http.StatusOK)
+
+	stored, err := ta.settings.Load(context.Background())
+	if err != nil {
+		t.Fatalf("loading settings: %v", err)
+	}
+	if stored.GreenAPI.APIToken != "super-secret-token" {
+		t.Errorf("api_token = %q, want it preserved", stored.GreenAPI.APIToken)
+	}
+	if stored.Scheduler.Timezone != "UTC" || stored.Scheduler.SendTime != "10:00" {
+		t.Errorf("scheduler = %#v, want the edit applied", stored.Scheduler)
+	}
+}
+
+// Clearing is still possible — it just has to be explicit.
+func TestPutSettingsExplicitEmptySecretStillClears(t *testing.T) {
+	ta := newTestAPI(t)
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings", configuredSettings()), http.StatusOK)
+
+	payload := configuredSettings()
+	payload["greenapi"].(map[string]any)["api_token"] = ""
+	requireStatus(t, ta.do(t, http.MethodPut, "/api/v1/settings", payload), http.StatusOK)
+
+	stored, err := ta.settings.Load(context.Background())
+	if err != nil {
+		t.Fatalf("loading settings: %v", err)
+	}
+	if stored.GreenAPI.APIToken != "" {
+		t.Fatalf("api_token = %q, want it cleared", stored.GreenAPI.APIToken)
+	}
+	if stored.GOWA.Password != "gowa-password" {
+		t.Fatalf("gowa password = %q, want the untouched secret preserved", stored.GOWA.Password)
+	}
+}

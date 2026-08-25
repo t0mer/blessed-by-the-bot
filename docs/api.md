@@ -37,7 +37,7 @@ Every error — validation, not-found, provider failure — uses one shape:
 |---|---|---|
 | `not_found` | 404 | No such resource. |
 | `method_not_allowed` | 405 | Wrong verb for the path. |
-| `invalid_json` | 400 / 413 | Malformed body, unknown field, wrong field type, or oversized body (limit 1 MiB). |
+| `invalid_json` | 400 / 413 | Malformed body, empty or `null` body, unknown field, wrong field type, or oversized body (limit 1 MiB). |
 | `invalid_id` | 400 | The `{id}` path segment is not a positive integer. |
 | `invalid_query` | 400 | A query parameter is malformed. |
 | `validation_failed` | 422 | One or more fields were rejected; see `fields`. |
@@ -93,7 +93,7 @@ A contact is a person with a recurring event.
 |---|---|---|---|---|
 | `name` | string | yes | — | Non-blank. |
 | `phone` | string | yes | — | International number. Punctuation, spaces and a leading `+` are stripped; the result must be 8–15 digits. |
-| `event_date` | string | yes | — | `YYYY-MM-DD`, zero-padded, a real calendar date. The year is kept for age arithmetic. |
+| `event_date` | string | yes | — | `YYYY-MM-DD`, zero-padded, a real calendar date with a year between 1900 and 2200. The year is kept for age arithmetic. |
 | `event_type` | string | yes | — | `birthday`, `wedding`, `anniversary`, `custom`. |
 | `language` | string | yes | — | Language tag: `he`, `en`, `pt-BR`. |
 | `relation` | string | yes | — | `friend`, `close_friend`, `family`, `coworker`. |
@@ -271,7 +271,21 @@ $ curl -X POST -H 'Content-Type: application/json' \
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/settings` | Current configuration, secrets masked. |
-| PUT | `/api/v1/settings` | Replace the configuration and re-apply it to the live provider. |
+| PUT | `/api/v1/settings` | Update the configuration and re-apply it to the live provider. |
+
+A `PUT` is a **section-wise merge, not a whole-document replace**. Each of
+`provider`, `greenapi`, `gowa`, `scheduler` and `group_echo` is optional: a
+section you omit (or send as `null`) keeps its stored value. That makes it safe
+to change one thing without resending everything —
+
+```json
+{"provider": "gowa"}
+```
+
+— switches the active provider and leaves both providers' credentials intact.
+Within a section you *do* send, every field is replaced, so an omitted field
+inside a present section is cleared. The response body from `GET` (including
+`provider_error`, when present) is always a valid `PUT` body.
 
 Runtime settings live in the database, not in the YAML config file — the config
 file covers infrastructure only (port, data directory, log level).
@@ -331,7 +345,7 @@ The rules, in both directions:
 | Secret is set | `"••••"` | **leaves it unchanged** |
 | Secret is not set | `""` | nothing (stays unset) |
 | Sending a new value | — | replaces it |
-| Sending `""` for a set secret | — | **clears it** |
+| Sending `""` for a set secret | — | **clears it** (the whole section must be present) |
 
 Two consequences worth stating plainly:
 
