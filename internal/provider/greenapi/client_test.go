@@ -297,3 +297,15 @@ func TestRedactedErrorStaysInspectable(t *testing.T) {
 		t.Errorf("status = %d, want 401", apiErr.Status)
 	}
 }
+
+func TestCheckAuthHeaderPackageFunction(t *testing.T) {
+	if err := greenapi.CheckAuthHeader("", "anything"); err != nil {
+		t.Fatalf("an unset token must accept any header, got %v", err)
+	}
+	if err := greenapi.CheckAuthHeader("Bearer s3cret", "  Bearer s3cret  "); err != nil {
+		t.Fatalf("surrounding whitespace must be tolerated, got %v", err)
+	}
+	if err := greenapi.CheckAuthHeader("Bearer s3cret", "Bearer wrong"); err == nil {
+		t.Fatal("want a mismatch to be rejected")
+	}
+}

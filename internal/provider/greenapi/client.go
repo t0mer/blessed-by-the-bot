@@ -195,16 +195,25 @@ func (c *Client) redact(err error) error {
 	return &redactedError{err: err, token: c.cfg.APIToken}
 }
 
-// CheckAuthHeader compares the configured webhook token against the value a
-// request carried, in constant time. An empty configured token accepts anything,
+// CheckAuthHeader compares a configured webhook token against the value a
+// request carried, in constant time. An empty expected token accepts anything,
 // which matches GreenAPI's own default of an unauthenticated webhook.
-func (c *Client) CheckAuthHeader(received string) error {
-	expected := strings.TrimSpace(c.cfg.WebhookAuthHeader)
-	if expected == "" {
+//
+// It is a package-level function because the webhook handler verifies against
+// the token in settings, and no client instance exists when another provider is
+// the active one.
+func CheckAuthHeader(expected, received string) error {
+	want := strings.TrimSpace(expected)
+	if want == "" {
 		return nil
 	}
-	if !hmac.Equal([]byte(expected), []byte(strings.TrimSpace(received))) {
+	if !hmac.Equal([]byte(want), []byte(strings.TrimSpace(received))) {
 		return errors.New("greenapi: webhook authorization header does not match")
 	}
 	return nil
+}
+
+// CheckAuthHeader verifies received against this client's configured token.
+func (c *Client) CheckAuthHeader(received string) error {
+	return CheckAuthHeader(c.cfg.WebhookAuthHeader, received)
 }
