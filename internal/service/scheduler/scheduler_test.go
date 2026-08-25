@@ -312,3 +312,83 @@ func TestTickWithNoProviderDoesNotFail(t *testing.T) {
 		t.Fatalf("Tick: %v", err)
 	}
 }
+
+func TestRunTicksUntilContextIsCancelled(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 17, 9, 30, 0, 0, jerusalem(t)),
+		func(d *scheduler.Deps) { d.Interval = 10 * time.Millisecond })
+	seedBlessing(t, h.store, "מזל טוב {{name}}")
+	seedContact(t, h.store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.sched.Run(ctx) }()
+
+	deadline := time.After(2 * time.Second)
+	for len(h.provider.messages()) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("Run never sent anything")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned %v, want nil after cancellation", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s of cancellation")
+	}
+
+	// The loop keeps ticking, but the yearly dedupe holds across ticks.
+	if got := len(h.provider.messages()); got != 1 {
+		t.Fatalf("sent %d messages, want exactly 1 across many ticks", got)
+	}
+}
+
+// A settings row the scheduler cannot read is a real fault, but crashing the
+// process over it would take the UI down too — the loop logs and carries on.
+func TestRunSurvivesATickError(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 17, 9, 30, 0, 0, jerusalem(t)),
+		func(d *scheduler.Deps) { d.Interval = 5 * time.Millisecond })
+	if err := h.store.Close(); err != nil {
+		t.Fatalf("closing store: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	if err := h.sched.Run(ctx); err != nil {
+		t.Fatalf("Run returned %v, want nil despite failing ticks", err)
+	}
+}
+
+// Restarting mid-day must catch a send whose send time already passed.
+func TestCatchUpAfterRestartSameDay(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 17, 23, 55, 0, 0, jerusalem(t)))
+	seedBlessing(t, h.store, "מזל טוב {{name}}")
+	seedContact(t, h.store) // general send time 09:00, long past
+
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if got := len(h.provider.messages()); got != 1 {
+		t.Fatalf("sent %d messages, want the missed send caught up", got)
+	}
+}
+
+// ...but never yesterday's. The next day the event no longer falls today.
+func TestNoCatchUpTheFollowingDay(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 18, 0, 5, 0, 0, jerusalem(t)))
+	seedBlessing(t, h.store, "מזל טוב {{name}}")
+	seedContact(t, h.store)
+
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if got := len(h.provider.messages()); got != 0 {
+		t.Fatalf("sent %d messages the day after, want 0", got)
+	}
+}

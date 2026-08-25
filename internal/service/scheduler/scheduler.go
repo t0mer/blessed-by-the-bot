@@ -112,6 +112,32 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 	return nil
 }
 
+// Run ticks until ctx is cancelled.
+//
+// The first tick fires immediately rather than after one interval, so a restart
+// picks up a send whose time has already passed instead of waiting a minute.
+// A failing tick is logged, never fatal: taking the process down would take the
+// settings UI with it, and the UI is where the operator fixes the cause.
+func (s *Scheduler) Run(ctx context.Context) error {
+	s.log.Info("scheduler started", "interval", s.interval)
+	defer s.log.Info("scheduler stopped")
+
+	ticker := time.NewTicker(s.interval)
+	defer ticker.Stop()
+
+	for {
+		if err := s.Tick(ctx); err != nil && ctx.Err() == nil {
+			s.log.Error("scheduler tick failed", "error", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
 // isDue applies the three conditions from spec §6: the event falls today, the
 // effective send time has passed, and no successful send exists for this year.
 //
