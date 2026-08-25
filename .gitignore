@@ -18,7 +18,7 @@ scans/
 /dist/
 /bin/
 /build/
-blessedbot
+/blessedbot
 
 # Go
 *.exe
