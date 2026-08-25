@@ -27,7 +27,7 @@ func (s *Store) AppendSendLog(ctx context.Context, e *SendLogEntry) (*SendLogEnt
 			chat_id, status, error, event_year, sent_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Kind, e.ContactID, e.GroupID, e.BlessingID, e.Provider,
-		e.ChatID, e.Status, e.Error, e.EventYear, formatTime(time.Now().UTC()),
+		e.ChatID, e.Status, e.Error, e.EventYear, formatTime(sendTime(e)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("appending send log: %w", err)
@@ -39,6 +39,20 @@ func (s *Store) AppendSendLog(ctx context.Context, e *SendLogEntry) (*SendLogEnt
 	row := s.db.QueryRowContext(ctx,
 		`SELECT `+sendLogColumns+` FROM send_log WHERE id = ?`, id)
 	return scanSendLog(row)
+}
+
+// sendTime honours a caller-supplied SentAt and falls back to now.
+//
+// The scheduler and the echo engine both run on injectable clocks so their
+// time-dependent rules are testable. Stamping time.Now() unconditionally here
+// would make the stored history disagree with the clock that produced it — and
+// the group-echo cooldown reads this column back, so the disagreement would
+// change behaviour, not just timestamps.
+func sendTime(e *SendLogEntry) time.Time {
+	if !e.SentAt.IsZero() {
+		return e.SentAt.UTC()
+	}
+	return time.Now().UTC()
 }
 
 // HasSuccessfulScheduledSend reports whether this contact already received a

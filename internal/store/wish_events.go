@@ -15,7 +15,7 @@ func (s *Store) RecordWishEvent(ctx context.Context, e *WishEvent) (bool, error)
 		`INSERT INTO wish_events (group_id, sender_id, message_id, matched, created_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (group_id, message_id) DO NOTHING`,
-		e.GroupID, e.SenderID, e.MessageID, e.Matched, formatTime(time.Now().UTC()),
+		e.GroupID, e.SenderID, e.MessageID, e.Matched, formatTime(wishTime(e)),
 	)
 	if err != nil {
 		return false, fmt.Errorf("recording wish event: %w", err)
@@ -25,6 +25,18 @@ func (s *Store) RecordWishEvent(ctx context.Context, e *WishEvent) (bool, error)
 		return false, fmt.Errorf("reading rows affected: %w", err)
 	}
 	return n > 0, nil
+}
+
+// wishTime honours a caller-supplied CreatedAt and falls back to now.
+//
+// The echo engine runs on an injectable clock so window and cooldown behaviour
+// is testable; if this always stamped time.Now() the engine's clock and the
+// stored evidence would disagree.
+func wishTime(e *WishEvent) time.Time {
+	if !e.CreatedAt.IsZero() {
+		return e.CreatedAt.UTC()
+	}
+	return time.Now().UTC()
 }
 
 // CountDistinctWishSenders counts how many different people wished in a group
