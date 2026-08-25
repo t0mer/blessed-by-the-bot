@@ -13,6 +13,23 @@ import (
 //go:embed all:dist
 var embedded embed.FS
 
+// placeholder is served when dist holds no built index.html. Only .gitkeep is
+// tracked in that directory — committing a built index.html would reference
+// hashed asset files that are themselves ignored, so a fresh clone would embed
+// a page pointing at scripts that do not exist.
+const placeholder = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>blessed-by-the-bot</title>
+  </head>
+  <body>
+    <p>UI not built. Run <code>make web</code> to build the frontend.</p>
+  </body>
+</html>
+`
+
 // Handler serves the embedded frontend. Requests that do not match a real file
 // fall back to index.html so client-side routing works on deep links.
 func Handler() (http.Handler, error) {
@@ -20,6 +37,12 @@ func Handler() (http.Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening embedded dist: %w", err)
 	}
+	return HandlerFor(sub)
+}
+
+// HandlerFor serves an arbitrary filesystem as the SPA. Handler uses it with the
+// embedded build; tests use it to exercise the not-yet-built case.
+func HandlerFor(sub fs.FS) (http.Handler, error) {
 	files := http.FileServer(http.FS(sub))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,8 +61,7 @@ func Handler() (http.Handler, error) {
 func serveIndex(w http.ResponseWriter, r *http.Request, sub fs.FS) {
 	body, err := fs.ReadFile(sub, "index.html")
 	if err != nil {
-		http.Error(w, "ui not built", http.StatusNotFound)
-		return
+		body = []byte(placeholder)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")

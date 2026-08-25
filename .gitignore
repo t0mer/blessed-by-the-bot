@@ -42,8 +42,11 @@ web/.vite/
 npm-debug.log*
 
 # Frontend build output is embedded from here; keep the tracked placeholder.
+# Built frontend: only the placeholder marker is tracked, so `go:embed all:dist`
+# compiles on a fresh clone. A committed index.html would point at hashed asset
+# files that are ignored, which is worse than no index at all.
 internal/webui/dist/*
-!internal/webui/dist/index.html
+!internal/webui/dist/.gitkeep
 
 # Local dev config / data
 .env
