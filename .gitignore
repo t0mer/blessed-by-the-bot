@@ -1,0 +1,66 @@
+# Claude / AI assistant context — local only, never track
+CLAUDE.md
+.claude/
+.cursor/
+.aider*
+
+# Planning / design docs — local only. Spec-mandated docs are negated below.
+docs/
+!docs/api.md
+!docs/providers.md
+*.design.md
+*.implementation.md
+
+# Security scan output
+scans/
+
+# Build output
+/dist/
+/bin/
+/build/
+blessedbot
+
+# Go
+*.exe
+*.exe~
+*.test
+*.out
+coverage.*
+profile.cov
+go.work
+go.work.sum
+vendor/
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+*.log
+npm-debug.log*
+
+# Frontend build output is embedded from here; keep the tracked placeholder.
+internal/webui/dist/*
+!internal/webui/dist/index.html
+
+# Local dev config / data
+.env
+.env.*
+!.env.example
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+config.yaml
+
+# Python (legacy leftovers)
+__pycache__/
+*.py[cod]
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
