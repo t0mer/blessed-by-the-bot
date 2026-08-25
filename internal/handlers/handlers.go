@@ -157,6 +157,9 @@ func (a *API) WebhookRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.NotFound(NotFoundJSON)
 	r.MethodNotAllowed(MethodNotAllowedJSON)
+
+	r.Post("/greenapi", a.greenAPIWebhook)
+	r.Post("/gowa", a.gowaWebhook)
 	return r
 }
 
