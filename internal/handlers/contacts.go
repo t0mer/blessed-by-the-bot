@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
@@ -159,4 +160,41 @@ func (a *API) deleteContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusNoContent, nil)
+}
+
+// sendNow triggers an immediate blessing for one contact, bypassing the
+// scheduled time. force=true additionally bypasses the once-per-year dedupe.
+//
+// The blessing engine arrives in Phase 5; until Deps.Sender is wired this
+// answers 501 rather than silently doing nothing.
+func (a *API) sendNow(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeError(w, a.log, err)
+		return
+	}
+
+	force := false
+	if raw := r.URL.Query().Get("force"); raw != "" {
+		parsed, parseErr := strconv.ParseBool(raw)
+		if parseErr != nil {
+			writeError(w, a.log, errorf(http.StatusBadRequest, codeInvalidQuery,
+				"force must be true or false"))
+			return
+		}
+		force = parsed
+	}
+
+	if a.sender == nil {
+		writeError(w, a.log, errorf(http.StatusNotImplemented, codeNotImplemented,
+			"the blessing engine is not running yet"))
+		return
+	}
+
+	entry, err := a.sender.SendNow(r.Context(), id, force)
+	if err != nil {
+		writeError(w, a.log, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, entry)
 }

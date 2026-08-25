@@ -106,6 +106,7 @@ func (a *API) Routes() chi.Router {
 		cr.Get("/{id}", a.getContact)
 		cr.Put("/{id}", a.updateContact)
 		cr.Delete("/{id}", a.deleteContact)
+		cr.Post("/{id}/send-now", a.sendNow)
 	})
 
 	r.Route("/blessings", func(br chi.Router) {
@@ -144,6 +145,8 @@ func (a *API) Routes() chi.Router {
 		pr.Get("/status", a.providerStatus)
 		pr.Post("/test", a.providerTest)
 	})
+
+	r.Get("/history", a.listHistory)
 	return r
 }
 
