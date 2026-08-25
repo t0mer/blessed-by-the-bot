@@ -159,3 +159,19 @@ A send whose response omits every known message-id field is still treated as
 **successful** with an empty id — a message that actually went out must not be
 recorded as failed just because a field was renamed. If your GOWA instance
 returns different shapes, these are the places to adjust.
+
+
+## Self-sent messages
+
+The echo engine must not count the bot's own blessing as a wish — the text it
+posts matches the wish patterns, so it would otherwise help trigger itself.
+
+- **GreenAPI**: nothing to do. Its `incomingMessageReceived` webhook fires only
+  for messages from other people; the bot's own sends arrive as
+  `outgoingMessageReceived`/`outgoingAPIMessageReceived`, which the parser
+  ignores outright.
+- **GOWA**: the parser reads a `from_me` flag from the payload, also accepting
+  the `fromMe` and `is_from_me` spellings this field has carried across
+  releases. If your GOWA build emits none of them, self-sent messages will be
+  counted as wishes — worth verifying against your version, since a bot echo
+  would then contribute one sender toward the next trigger.

@@ -555,6 +555,28 @@ Unhandled payloads and downstream failures return `200` on purpose: providers
 retry on non-2xx, and neither case is something the provider can fix by sending
 the message again.
 
-Consumption of these messages by the group-echo engine arrives in Phase 6. Until
-then the endpoints verify, parse and log, which is enough to confirm a
-provider's webhook configuration end to end.
+### What happens to an accepted message
+
+An authentic group message is handed to the **group echo engine**:
+
+1. It is ignored unless it arrives in a configured, enabled group.
+2. Messages the bot itself sent are skipped — its own blessing matches the wish
+   patterns, so counting it would let the bot trigger itself.
+3. The text is normalized (decomposed, combining marks stripped, casefolded) and
+   tested against every enabled wish pattern in **all** languages, since groups
+   are multilingual. Stripping combining marks is what makes vocalised Hebrew
+   (`מַזָּל טוֹב`) match the plain pattern `מזל טוב`.
+4. A match is recorded in `wish_events`, keyed `UNIQUE(group_id, message_id)` so
+   a provider redelivery cannot inflate the count.
+5. If the number of **distinct senders** inside the rolling window reaches the
+   group's threshold — one excited friend sending five messages is one vote —
+   and the group is out of cooldown, the bot posts one blessing and logs it as
+   `group_echo`.
+
+The blessing chosen for a group is always **name-free**: the bot sees the burst
+but does not know whose birthday it is, so templates containing `{{name}}` (and
+templates targeted at a gender or relation) are excluded. Migration 0003 seeds
+name-free templates for every event type so this works on a fresh install.
+
+Window, threshold and cooldown come from `group_echo` in Settings; a group may
+override the threshold. `wish_events` older than 7 days are swept nightly.
