@@ -3,6 +3,7 @@ package greenapi_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -242,5 +243,57 @@ func TestNewDefaultsAPIURLAndTrimsSlash(t *testing.T) {
 	}
 	if got := c.APIURL(); got != "https://7103.api.greenapi.com" {
 		t.Errorf("api url = %q, want the trailing slash trimmed", got)
+	}
+}
+
+func TestErrorDoesNotLeakTokenEchoedInResponseBody(t *testing.T) {
+	// A provider is free to quote the request URL back in an error body, and the
+	// GreenAPI token is a path segment of that URL.
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized for ` + r.URL.Path + `"}`))
+	})
+
+	for name, call := range map[string]func() error{
+		"SendText": func() error {
+			_, err := c.SendText(context.Background(), "972501234567@c.us", "hi")
+			return err
+		},
+		"ListGroups": func() error {
+			_, err := c.ListGroups(context.Background())
+			return err
+		},
+		"Status": func() error {
+			_, err := c.Status(context.Background())
+			return err
+		},
+	} {
+		err := call()
+		if err == nil {
+			t.Errorf("%s: expected an error", name)
+			continue
+		}
+		if strings.Contains(err.Error(), testToken) {
+			t.Errorf("%s: error leaks the API token: %v", name, err)
+		}
+		if !strings.Contains(err.Error(), "***") {
+			t.Errorf("%s: token was not redacted: %v", name, err)
+		}
+	}
+}
+
+func TestRedactedErrorStaysInspectable(t *testing.T) {
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(r.URL.Path))
+	})
+
+	_, err := c.SendText(context.Background(), "972501234567@c.us", "hi")
+	var apiErr *provider.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("redaction broke the error chain: %v", err)
+	}
+	if apiErr.Status != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", apiErr.Status)
 	}
 }

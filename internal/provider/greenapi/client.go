@@ -110,7 +110,7 @@ func (c *Client) SendText(ctx context.Context, chatID, text string) (string, err
 	var resp sendMessageResponse
 	if err := c.tr.Do(ctx, "POST", c.endpoint("sendMessage"), nil,
 		sendMessageRequest{ChatID: normalized, Message: text}, &resp); err != nil {
-		return "", fmt.Errorf("greenapi: sending message: %w", err)
+		return "", c.redact(fmt.Errorf("greenapi: sending message: %w", err))
 	}
 	return resp.IDMessage, nil
 }
@@ -126,7 +126,7 @@ type contact struct {
 func (c *Client) ListGroups(ctx context.Context) ([]provider.Group, error) {
 	var contacts []contact
 	if err := c.tr.Do(ctx, "GET", c.endpoint("getContacts"), nil, nil, &contacts); err != nil {
-		return nil, fmt.Errorf("greenapi: listing contacts: %w", err)
+		return nil, c.redact(fmt.Errorf("greenapi: listing contacts: %w", err))
 	}
 
 	groups := make([]provider.Group, 0, len(contacts))
@@ -147,7 +147,7 @@ type stateResponse struct {
 func (c *Client) Status(ctx context.Context) (provider.ProviderStatus, error) {
 	var resp stateResponse
 	if err := c.tr.Do(ctx, "GET", c.endpoint("getStateInstance"), nil, nil, &resp); err != nil {
-		return provider.ProviderStatus{Provider: Name}, fmt.Errorf("greenapi: reading state: %w", err)
+		return provider.ProviderStatus{Provider: Name}, c.redact(fmt.Errorf("greenapi: reading state: %w", err))
 	}
 
 	status := provider.ProviderStatus{
@@ -167,6 +167,32 @@ func (c *Client) Status(ctx context.Context) (provider.ProviderStatus, error) {
 		status.Detail = "The instance is still starting; try again shortly."
 	}
 	return status, nil
+}
+
+// redactedError hides the API token in an error message while keeping the
+// wrapped error inspectable with errors.As and errors.Is.
+type redactedError struct {
+	err   error
+	token string
+}
+
+func (e *redactedError) Error() string {
+	return strings.ReplaceAll(e.err.Error(), e.token, "***")
+}
+
+func (e *redactedError) Unwrap() error { return e.err }
+
+// redact scrubs the API token from an error.
+//
+// The shared transport already reduces URLs to scheme://host, but a provider is
+// free to echo the request URL — token path segment and all — back inside an
+// error response body, which the transport quotes verbatim. This closes that
+// path so a 401 can never put the credential into a log line.
+func (c *Client) redact(err error) error {
+	if err == nil || c.cfg.APIToken == "" {
+		return err
+	}
+	return &redactedError{err: err, token: c.cfg.APIToken}
 }
 
 // CheckAuthHeader compares the configured webhook token against the value a
