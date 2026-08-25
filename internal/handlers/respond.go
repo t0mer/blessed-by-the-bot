@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/provider"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/scheduler"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
 )
 
@@ -41,6 +43,9 @@ const (
 	codeUnauthorized        = "unauthorized"
 	codeNotImplemented      = "not_implemented"
 	codeConflict            = "conflict"
+	codeAlreadySent         = "already_sent"
+	codeContactDisabled     = "contact_disabled"
+	codeNoBlessing          = "no_blessing"
 )
 
 type errorEnvelope struct {
@@ -96,6 +101,15 @@ func writeError(w http.ResponseWriter, log *slog.Logger, err error) {
 	case errors.Is(err, provider.ErrNoProvider):
 		apiErr = errorf(http.StatusServiceUnavailable, codeProviderUnavailable,
 			"no whatsapp provider is configured; set one up in Settings")
+	case errors.Is(err, scheduler.ErrAlreadySent):
+		apiErr = errorf(http.StatusConflict, codeAlreadySent,
+			"this contact already received a blessing this year; use force=true to send anyway")
+	case errors.Is(err, scheduler.ErrContactDisabled):
+		apiErr = errorf(http.StatusConflict, codeContactDisabled,
+			"this contact is disabled")
+	case errors.Is(err, blessing.ErrNoBlessing):
+		apiErr = errorf(http.StatusUnprocessableEntity, codeNoBlessing,
+			"no blessing template matches this contact; add one under Blessings")
 	default:
 		if log != nil {
 			log.Error("request failed", "error", err)

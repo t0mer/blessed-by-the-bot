@@ -3,9 +3,12 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/scheduler"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
 )
 
@@ -181,4 +184,41 @@ func TestSendNowReportsEngineFailure(t *testing.T) {
 
 	rec := ta.do(t, http.MethodPost, "/api/v1/contacts/1/send-now", nil)
 	requireStatus(t, rec, http.StatusInternalServerError)
+}
+
+func TestSendNowAlreadySentIsConflict(t *testing.T) {
+	ta := newTestAPI(t, func(d *Deps) {
+		d.Sender = &fakeSender{err: fmt.Errorf("wrapped: %w", scheduler.ErrAlreadySent)}
+	})
+
+	rec := ta.do(t, http.MethodPost, "/api/v1/contacts/1/send-now", nil)
+	requireStatus(t, rec, http.StatusConflict)
+	if got := errorCode(t, rec); got != codeAlreadySent {
+		t.Fatalf("code = %q, want %q", got, codeAlreadySent)
+	}
+}
+
+func TestSendNowDisabledContactIsConflict(t *testing.T) {
+	ta := newTestAPI(t, func(d *Deps) {
+		d.Sender = &fakeSender{err: fmt.Errorf("wrapped: %w", scheduler.ErrContactDisabled)}
+	})
+
+	rec := ta.do(t, http.MethodPost, "/api/v1/contacts/1/send-now", nil)
+	requireStatus(t, rec, http.StatusConflict)
+	if got := errorCode(t, rec); got != codeContactDisabled {
+		t.Fatalf("code = %q, want %q", got, codeContactDisabled)
+	}
+}
+
+// A missing template is a configuration gap the user can fix, not a server bug.
+func TestSendNowWithoutATemplateIs422(t *testing.T) {
+	ta := newTestAPI(t, func(d *Deps) {
+		d.Sender = &fakeSender{err: fmt.Errorf("wrapped: %w", blessing.ErrNoBlessing)}
+	})
+
+	rec := ta.do(t, http.MethodPost, "/api/v1/contacts/1/send-now", nil)
+	requireStatus(t, rec, http.StatusUnprocessableEntity)
+	if got := errorCode(t, rec); got != codeNoBlessing {
+		t.Fatalf("code = %q, want %q", got, codeNoBlessing)
+	}
 }
