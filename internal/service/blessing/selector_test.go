@@ -221,3 +221,69 @@ func TestForContactRejectsANilContact(t *testing.T) {
 		t.Fatal("want an error for a nil contact")
 	}
 }
+
+func TestForGroupOnlyReturnsNameFreeTemplates(t *testing.T) {
+	st := newStore(t)
+	addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "he", Text: "מזל טוב {{name}}"})
+	want := addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "he", Text: "מזל טוב לכולם!"})
+
+	sel := newSelector(t, st)
+	for range 10 {
+		got, err := sel.ForGroup(context.Background(), store.EventBirthday, "he")
+		if err != nil {
+			t.Fatalf("ForGroup: %v", err)
+		}
+		if got.ID != want.ID {
+			t.Fatalf("picked %d, want the name-free template %d", got.ID, want.ID)
+		}
+	}
+}
+
+// Targeted templates have no single recipient in a group, so they are excluded
+// even when they carry no placeholder.
+func TestForGroupExcludesTargetedTemplates(t *testing.T) {
+	st := newStore(t)
+	female := store.GenderFemale
+	addBlessing(t, st, store.Blessing{
+		EventType: store.EventBirthday, Language: "he", Text: "מזל טוב!", Gender: &female,
+	})
+	friend := store.RelationFriend
+	addBlessing(t, st, store.Blessing{
+		EventType: store.EventBirthday, Language: "he", Text: "מזל טוב!", Relation: &friend,
+	})
+
+	if _, err := newSelector(t, st).ForGroup(context.Background(), store.EventBirthday, "he"); !errors.Is(err, blessing.ErrNoBlessing) {
+		t.Fatalf("err = %v, want ErrNoBlessing", err)
+	}
+}
+
+func TestForGroupFallsBackToEnglish(t *testing.T) {
+	st := newStore(t)
+	want := addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "en", Text: "Happy birthday!"})
+
+	got, err := newSelector(t, st).ForGroup(context.Background(), store.EventBirthday, "ru")
+	if err != nil {
+		t.Fatalf("ForGroup: %v", err)
+	}
+	if got.ID != want.ID {
+		t.Fatalf("picked %d, want the English fallback %d", got.ID, want.ID)
+	}
+}
+
+// The starter seed must satisfy group echo out of the box.
+func TestForGroupWorksWithTheSeededSet(t *testing.T) {
+	st := newStore(t)
+	if err := st.ApplySeedBlessings(context.Background()); err != nil {
+		t.Fatalf("restoring the seed: %v", err)
+	}
+
+	for _, language := range []string{"he", "en"} {
+		got, err := newSelector(t, st).ForGroup(context.Background(), store.EventBirthday, language)
+		if err != nil {
+			t.Fatalf("ForGroup(%s): %v", language, err)
+		}
+		if blessing.HasNamePlaceholder(got.Text) {
+			t.Fatalf("seeded group template %q carries a name placeholder", got.Text)
+		}
+	}
+}

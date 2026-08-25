@@ -84,3 +84,57 @@ func randomIndex(n int) int {
 	}
 	return rand.IntN(n) //nolint:gosec // variety in blessings, not security
 }
+
+// ForGroup returns a template suitable for posting into a group.
+//
+// Group echo must use a name-free template: the bot sees a burst of
+// congratulation but does not know whose birthday it is, so a "{{name}}"
+// placeholder has nothing to fill it with. Templates that carry one are
+// filtered out here rather than rendered with an empty name.
+//
+// Gender and relation targeting are ignored for the same reason — there is no
+// single recipient to target — so only unrestricted templates qualify.
+func (s *Selector) ForGroup(ctx context.Context, eventType, language string) (*store.Blessing, error) {
+	chosen, err := s.pickNameFree(ctx, eventType, language)
+	if err != nil {
+		return nil, err
+	}
+	if chosen != nil {
+		return chosen, nil
+	}
+
+	if language != FallbackLanguage {
+		chosen, err = s.pickNameFree(ctx, eventType, FallbackLanguage)
+		if err != nil {
+			return nil, err
+		}
+		if chosen != nil {
+			s.log.Warn("no name-free group blessing in the group's language; falling back",
+				"language", language, "fallback", FallbackLanguage)
+			return chosen, nil
+		}
+	}
+
+	return nil, fmt.Errorf("%w: no name-free %s template in %s for group use",
+		ErrNoBlessing, eventType, language)
+}
+
+func (s *Selector) pickNameFree(ctx context.Context, eventType, language string) (*store.Blessing, error) {
+	candidates, err := s.store.FindBlessings(ctx, eventType, language)
+	if err != nil {
+		return nil, err
+	}
+
+	eligible := make([]store.Blessing, 0, len(candidates))
+	for _, b := range candidates {
+		if HasNamePlaceholder(b.Text) || b.Gender != nil || b.Relation != nil {
+			continue
+		}
+		eligible = append(eligible, b)
+	}
+	if len(eligible) == 0 {
+		return nil, nil
+	}
+	chosen := eligible[randomIndex(len(eligible))]
+	return &chosen, nil
+}
