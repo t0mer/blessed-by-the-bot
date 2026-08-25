@@ -37,6 +37,10 @@ type Options struct {
 	// Sender backs POST /contacts/{id}/send-now. Nil leaves that endpoint
 	// answering 501.
 	Sender handlers.Sender
+
+	// Incoming consumes normalized provider webhook messages. Nil leaves the
+	// webhook endpoints verifying and logging without a consumer.
+	Incoming handlers.IncomingHandler
 }
 
 // Server owns the HTTP router and listener lifecycle. Route handling lives in
@@ -67,6 +71,7 @@ func New(opts Options) (*Server, error) {
 		Version:   opts.Version,
 		Rebuild:   opts.Rebuild,
 		Sender:    opts.Sender,
+		Incoming:  opts.Incoming,
 	})
 	if err != nil {
 		return nil, err

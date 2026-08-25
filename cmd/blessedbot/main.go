@@ -26,6 +26,7 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/provider/factory"
 	"github.com/t0mer/blessed-by-the-bot/internal/server"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/echo"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/scheduler"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
@@ -151,6 +152,17 @@ func run(cmd *cobra.Command) error {
 		return err
 	}
 
+	echoEngine, err := echo.New(echo.Deps{
+		Store:     st,
+		Settings:  settingsSvc,
+		Providers: providers,
+		Blessings: selector,
+		Logger:    log,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Rebuilding on a settings change is what lets the user switch providers or
 	// fix a token from the UI without restarting the process (spec §4).
 	rebuild := func(_ context.Context, s *settings.Settings) error {
@@ -170,6 +182,7 @@ func run(cmd *cobra.Command) error {
 		Providers: providers,
 		Rebuild:   rebuild,
 		Sender:    sched,
+		Incoming:  echoEngine,
 	})
 	if err != nil {
 		return err
@@ -180,6 +193,7 @@ func run(cmd *cobra.Command) error {
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error { return srv.Run(groupCtx) })
 	group.Go(func() error { return sched.Run(groupCtx) })
+	group.Go(func() error { return echoEngine.RunJanitor(groupCtx) })
 	return group.Wait()
 }
 
