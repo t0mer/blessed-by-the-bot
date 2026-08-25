@@ -1,0 +1,26 @@
+services:
+  blessedbot:
+    image: techblog/blessed-by-the-bot:latest
+    container_name: blessedbot
+    ports:
+      - "8080:8080"
+    environment:
+      # Generate with: docker run --rm techblog/blessed-by-the-bot:latest genkey
+      BBTB_ENCRYPTION_KEY: "${BBTB_ENCRYPTION_KEY:?set BBTB_ENCRYPTION_KEY in .env}"
+      BBTB_LOG_LEVEL: info
+      BBTB_DATA_DIR: /data
+    volumes:
+      # Named volume: the image runs as uid 65532 and a root-owned bind mount
+      # would not be writable.
+      - blessedbot-data:/data
+    healthcheck:
+      # scratch has no shell or curl, so the binary probes itself.
+      test: ["CMD", "/blessedbot", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  blessedbot-data:

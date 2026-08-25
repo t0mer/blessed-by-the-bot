@@ -1,0 +1,25 @@
+# blessed-by-the-bot — infrastructure configuration.
+#
+# Precedence: command-line flags > environment variables > this file > defaults.
+# Behavioural settings (WhatsApp provider, send times, group-echo thresholds)
+# are configured in the web UI and stored in the database, not here.
+#
+# Copy to config.yaml, or pass --config /path/to/config.yaml.
+
+# HTTP listening port.            env: BBTB_PORT
+port: 8080
+
+# Directory holding the SQLite database and other state.
+# env: BBTB_DATA_DIR    (Docker default: /data)
+data-dir: ./data
+
+# debug | info | warn | error     env: BBTB_LOG_LEVEL
+log-level: info
+
+# Development mode: verbose text logs and no encryption-key requirement.
+# Never enable in production.
+dev: false
+
+# NOTE: the encryption key is deliberately NOT configurable here.
+# Set BBTB_ENCRYPTION_KEY in the environment — a base64-encoded 32-byte key.
+# Generate one with:  blessedbot genkey
