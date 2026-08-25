@@ -127,6 +127,15 @@ func (a *API) Routes() chi.Router {
 		gr.Put("/{id}", a.updateGroup)
 		gr.Delete("/{id}", a.deleteGroup)
 	})
+
+	// No GET /{id}: spec §8 lists only list/create/update/delete here, because
+	// the UI edits patterns from the list it already holds.
+	r.Route("/wish-patterns", func(wr chi.Router) {
+		wr.Get("/", a.listWishPatterns)
+		wr.Post("/", a.createWishPattern)
+		wr.Put("/{id}", a.updateWishPattern)
+		wr.Delete("/{id}", a.deleteWishPattern)
+	})
 	return r
 }
 
