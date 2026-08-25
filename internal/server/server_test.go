@@ -220,3 +220,19 @@ func TestServerMountsTheAPIAndWebhooks(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricsEndpointIsExposed(t *testing.T) {
+	srv := newServer(t)
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	// The application's own collectors must be registered, not just Go runtime
+	// defaults — an empty-looking /metrics would pass a naive status check.
+	if !strings.Contains(rec.Body.String(), "blessedbot_scheduler_ticks_total") {
+		t.Fatalf("want the application collectors registered; body starts: %.200s", rec.Body.String())
+	}
+}

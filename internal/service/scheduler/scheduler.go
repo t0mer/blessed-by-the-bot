@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/t0mer/blessed-by-the-bot/internal/metrics"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
@@ -79,21 +80,27 @@ func (s *Scheduler) Providers() *provider.Manager { return s.providers }
 // A single contact failing is logged and recorded, never fatal: one missing
 // template must not stop everyone else's birthday.
 func (s *Scheduler) Tick(ctx context.Context) error {
+	// A flat tick counter is how a stopped loop becomes visible; a send counter
+	// alone looks identical on a day with no birthdays.
 	current, err := s.settings.Load(ctx)
 	if err != nil {
+		metrics.SchedulerTicks.WithLabelValues("error").Inc()
 		return fmt.Errorf("loading settings: %w", err)
 	}
 
 	loc, err := time.LoadLocation(current.Scheduler.Timezone)
 	if err != nil {
+		metrics.SchedulerTicks.WithLabelValues("error").Inc()
 		return fmt.Errorf("loading timezone %q: %w", current.Scheduler.Timezone, err)
 	}
 	now := s.now().In(loc)
 
 	contacts, err := s.store.ListContacts(ctx)
 	if err != nil {
+		metrics.SchedulerTicks.WithLabelValues("error").Inc()
 		return fmt.Errorf("listing contacts: %w", err)
 	}
+	metrics.SchedulerTicks.WithLabelValues("ok").Inc()
 
 	for i := range contacts {
 		c := &contacts[i]
@@ -199,7 +206,16 @@ func (s *Scheduler) deliver(ctx context.Context, c *store.Contact, eventYear *in
 		SentAt: s.now().UTC(),
 	}
 
-	if _, sendErr := active.SendText(ctx, chatID, text); sendErr != nil {
+	sendStart := s.now()
+	_, sendErr := active.SendText(ctx, chatID, text)
+	metrics.ProviderRequestDuration.
+		WithLabelValues(active.Name(), metrics.Outcome(sendErr)).
+		Observe(s.now().Sub(sendStart).Seconds())
+	metrics.MessagesSent.
+		WithLabelValues(active.Name(), store.KindScheduled, metrics.Outcome(sendErr)).
+		Inc()
+
+	if sendErr != nil {
 		reason := sendErr.Error()
 		entry.Status, entry.Error = store.StatusFailed, &reason
 		logged, logErr := s.store.AppendSendLog(ctx, entry)

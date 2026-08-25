@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/t0mer/blessed-by-the-bot/internal/metrics"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
@@ -130,6 +131,7 @@ func (e *Engine) HandleIncoming(ctx context.Context, msg provider.IncomingMessag
 		// A provider redelivery. Re-evaluating would be harmless but pointless.
 		return nil
 	}
+	metrics.WishesMatched.WithLabelValues(group.ChatID).Inc()
 	e.log.Debug("wish recorded", "group_id", group.ID, "sender", msg.SenderID, "matched", matched)
 
 	return e.maybeEcho(ctx, group)
@@ -227,7 +229,13 @@ func (e *Engine) postEcho(ctx context.Context, group *store.Group, senders int) 
 		Provider: active.Name(), ChatID: group.ChatID, SentAt: e.now().UTC(),
 	}
 
-	if _, sendErr := active.SendText(ctx, group.ChatID, chosen.Text); sendErr != nil {
+	_, sendErr := active.SendText(ctx, group.ChatID, chosen.Text)
+	metrics.GroupEchoes.WithLabelValues(group.ChatID, metrics.Outcome(sendErr)).Inc()
+	metrics.MessagesSent.
+		WithLabelValues(active.Name(), store.KindGroupEcho, metrics.Outcome(sendErr)).
+		Inc()
+
+	if sendErr != nil {
 		reason := sendErr.Error()
 		entry.Status, entry.Error = store.StatusFailed, &reason
 		if _, logErr := e.store.AppendSendLog(ctx, entry); logErr != nil {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/t0mer/blessed-by-the-bot/internal/metrics"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider/gowa"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider/greenapi"
@@ -29,6 +30,7 @@ func (a *API) greenAPIWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := greenapi.CheckAuthHeader(current.GreenAPI.WebhookAuthHeader, r.Header.Get("Authorization")); err != nil {
+		metrics.WebhooksReceived.WithLabelValues(greenapi.Name, "unauthorized").Inc()
 		a.log.Warn("rejected greenapi webhook", "reason", "authorization header mismatch")
 		writeError(w, a.log, errorf(http.StatusUnauthorized, codeUnauthorized,
 			"webhook authorization failed"))
@@ -37,6 +39,7 @@ func (a *API) greenAPIWebhook(w http.ResponseWriter, r *http.Request) {
 
 	msg, handled, err := greenapi.ParseWebhook(body)
 	if err != nil {
+		metrics.WebhooksReceived.WithLabelValues(greenapi.Name, "unparsable").Inc()
 		a.log.Warn("unparsable greenapi webhook", "error", err)
 		writeError(w, a.log, errorf(http.StatusBadRequest, codeInvalidJSON,
 			"webhook payload could not be parsed"))
@@ -65,6 +68,7 @@ func (a *API) gowaWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := gowa.VerifySignature(current.GOWA.WebhookSecret, body, r.Header.Get(gowa.SignatureHeader)); err != nil {
+		metrics.WebhooksReceived.WithLabelValues(gowa.Name, "unauthorized").Inc()
 		a.log.Warn("rejected gowa webhook", "error", err)
 		writeError(w, a.log, errorf(http.StatusUnauthorized, codeUnauthorized,
 			"webhook signature verification failed"))
@@ -73,6 +77,7 @@ func (a *API) gowaWebhook(w http.ResponseWriter, r *http.Request) {
 
 	msg, handled, err := gowa.ParseWebhook(body)
 	if err != nil {
+		metrics.WebhooksReceived.WithLabelValues(gowa.Name, "unparsable").Inc()
 		a.log.Warn("unparsable gowa webhook", "error", err)
 		writeError(w, a.log, errorf(http.StatusBadRequest, codeInvalidJSON,
 			"webhook payload could not be parsed"))
@@ -87,9 +92,11 @@ func (a *API) gowaWebhook(w http.ResponseWriter, r *http.Request) {
 // unhandled payload type nor a handler failure changes the HTTP response.
 func (a *API) dispatch(ctx context.Context, name string, msg *provider.IncomingMessage, handled bool) {
 	if !handled || msg == nil {
+		metrics.WebhooksReceived.WithLabelValues(name, "ignored").Inc()
 		a.log.Debug("webhook payload ignored", "provider", name)
 		return
 	}
+	metrics.WebhooksReceived.WithLabelValues(name, "accepted").Inc()
 	a.log.Info("inbound message",
 		"provider", name, "chat_id", msg.ChatID, "is_group", msg.IsGroup, "sender", msg.SenderID)
 

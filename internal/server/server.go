@@ -12,9 +12,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/config"
 	"github.com/t0mer/blessed-by-the-bot/internal/handlers"
+	"github.com/t0mer/blessed-by-the-bot/internal/metrics"
 	"github.com/t0mer/blessed-by-the-bot/internal/provider"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
@@ -103,6 +105,11 @@ func (s *Server) routes() error {
 
 	r.Mount("/api/v1", s.api.Routes())
 	r.Mount("/webhooks", s.api.WebhookRoutes())
+
+	// Prometheus scrape target. Deliberately outside /api/v1: it is an operator
+	// surface, not part of the versioned API the SPA consumes.
+	metrics.Init()
+	r.Handle("/metrics", promhttp.Handler())
 
 	ui, err := webui.Handler()
 	if err != nil {
