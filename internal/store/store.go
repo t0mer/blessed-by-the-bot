@@ -174,3 +174,35 @@ func (s *Store) applyMigration(ctx context.Context, version, body string) error 
 }
 
 func formatTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+func parseTime(s string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parsing timestamp %q: %w", s, err)
+	}
+	return t.UTC(), nil
+}
+
+// scanner is satisfied by both *sql.Row and *sql.Rows.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// requireAffected converts a zero-rows-affected result into ErrNotFound.
+func requireAffected(res sql.Result, what string, id int64) error {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("reading rows affected for %s %d: %w", what, id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
