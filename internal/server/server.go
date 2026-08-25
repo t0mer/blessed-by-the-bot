@@ -55,7 +55,9 @@ func (s *Server) Router() http.Handler { return s.router }
 func (s *Server) routes() error {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// middleware.RealIP is deliberately not used: it rewrites RemoteAddr from
+	// client-controlled headers (GHSA-3fxj-6jh8-hvhx) and nothing here needs the
+	// client IP. Revisit only behind a proxy with a trusted-header allowlist.
 	r.Use(s.requestLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
