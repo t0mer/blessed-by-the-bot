@@ -21,6 +21,8 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/config"
 	"github.com/t0mer/blessed-by-the-bot/internal/crypto"
 	"github.com/t0mer/blessed-by-the-bot/internal/logging"
+	"github.com/t0mer/blessed-by-the-bot/internal/provider"
+	"github.com/t0mer/blessed-by-the-bot/internal/provider/factory"
 	"github.com/t0mer/blessed-by-the-bot/internal/server"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
@@ -119,6 +121,17 @@ func run(cmd *cobra.Command) error {
 		"timezone", current.Scheduler.Timezone,
 		"send_time", current.Scheduler.SendTime,
 	)
+
+	// A fresh install has no credentials yet, and the user needs the UI up in
+	// order to enter them — so a provider that will not build is a warning, not
+	// a startup failure.
+	transport := provider.NewTransport(provider.TransportOptions{Logger: log})
+	providers := provider.NewManager()
+	if err := factory.Rebuild(providers, current, transport, log); err != nil {
+		log.Warn("whatsapp provider not ready; configure it in the settings UI", "error", err)
+	} else {
+		log.Info("whatsapp provider ready", "provider", providers.Name())
+	}
 
 	srv, err := server.New(server.Options{
 		Config: cfg, Logger: log, Version: version, Store: st,
