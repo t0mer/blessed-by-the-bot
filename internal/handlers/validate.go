@@ -31,6 +31,14 @@ const (
 	maxPhoneDigits = 15
 )
 
+// Event-year bounds. time.Parse happily accepts "0000-01-01", which is a typo,
+// not a birthday; these bounds catch a slipped digit without second-guessing
+// anyone's actual dates.
+const (
+	minEventYear = 1900
+	maxEventYear = 2200
+)
+
 // validator accumulates field errors so one request reports every problem at
 // once rather than making the user fix them one round-trip at a time.
 type validator struct {
@@ -87,6 +95,10 @@ func (v *validator) date(field, value string) {
 	parsed, err := time.Parse(time.DateOnly, value)
 	if err != nil || parsed.Format(time.DateOnly) != value {
 		v.add(field, "must be a real date in YYYY-MM-DD form")
+		return
+	}
+	if year := parsed.Year(); year < minEventYear || year > maxEventYear {
+		v.add(field, fmt.Sprintf("year must be between %d and %d", minEventYear, maxEventYear))
 	}
 }
 

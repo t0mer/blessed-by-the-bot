@@ -271,3 +271,23 @@ func TestPathIDParsesAndRejects(t *testing.T) {
 		}
 	}
 }
+
+// time.Parse accepts year 0000; a scheduler computing an age from it would be
+// nonsense, and it is far more likely a slipped digit than a real date.
+func TestDateRejectsImplausibleYears(t *testing.T) {
+	cases := map[string]bool{
+		"1900-01-01": true,
+		"1990-05-17": true,
+		"2200-12-31": true,
+		"0000-01-01": false,
+		"0202-05-17": false, // a slipped digit in 2020
+		"9999-12-31": false,
+	}
+	for value, want := range cases {
+		v := newValidator()
+		v.date("event_date", value)
+		if got := v.err() == nil; got != want {
+			t.Errorf("date(%q) valid = %v, want %v", value, got, want)
+		}
+	}
+}
