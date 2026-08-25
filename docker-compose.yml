@@ -5,22 +5,46 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Generate with: docker run --rm techblog/blessed-by-the-bot:latest genkey
+      # REQUIRED. Generate one with: docker run --rm techblog/blessed-by-the-bot genkey
+      # Provider credentials are encrypted at rest with this key; lose it and
+      # they cannot be decrypted, and the app will refuse to start.
       BBTB_ENCRYPTION_KEY: "${BBTB_ENCRYPTION_KEY:?set BBTB_ENCRYPTION_KEY in .env}"
       BBTB_LOG_LEVEL: info
-      BBTB_DATA_DIR: /data
     volumes:
-      # Named volume: the image runs as uid 65532 and a root-owned bind mount
-      # would not be writable.
+      # A named volume, not a bind mount: the image runs as uid 65532 and a
+      # root-owned host directory would not be writable. This volume holds the
+      # SQLite database, including the encrypted provider credentials — back it
+      # up together with BBTB_ENCRYPTION_KEY.
       - blessedbot-data:/data
+    restart: unless-stopped
     healthcheck:
-      # scratch has no shell or curl, so the binary probes itself.
+      # scratch has no shell, so the binary probes itself.
       test: ["CMD", "/blessedbot", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 5s
       start_period: 10s
       retries: 3
-    restart: unless-stopped
+
+  # Optional: run GOWA alongside instead of using GreenAPI's cloud service.
+  # Uncomment, then in Settings choose the GOWA provider with
+  # base URL http://gowa:3000 and the same webhook secret set below.
+  #
+  # gowa:
+  #   image: aldinokemal2104/go-whatsapp-web-multidevice:latest
+  #   container_name: gowa
+  #   ports:
+  #     - "3000:3000"
+  #   command:
+  #     - rest
+  #     - --port=3000
+  #     - --webhook=http://blessedbot:8080/webhooks/gowa
+  #     - --webhook-secret=change-me
+  #     # Only message events are consumed; the rest would be noise.
+  #     - --webhook-events=message
+  #   volumes:
+  #     - gowa-data:/app/storages
+  #   restart: unless-stopped
 
 volumes:
   blessedbot-data:
+  # gowa-data:
