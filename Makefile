@@ -8,12 +8,14 @@ IMAGE       := techblog/blessed-by-the-bot
 
 export CGO_ENABLED=0
 
-.PHONY: all build run test test-race lint fmt tidy web docker clean
+.PHONY: all build build-all run dev test test-race lint fmt tidy web web-install docker clean
 
 all: lint test build
 
-build: ## build the binary into bin/
+build: ## build the binary into bin/ (uses whatever is already in the embed dir)
 	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/$(BINARY)
+
+build-all: web build ## build the frontend, then the binary that embeds it
 
 run: ## run the server in dev mode
 	go run ./cmd/$(BINARY) --dev
@@ -34,9 +36,14 @@ fmt:
 tidy:
 	go mod tidy
 
-web: ## build the frontend into internal/webui/dist (no-op until phase 7)
-	@if [ -f web/package.json ]; then cd web && npm ci && npm run build; \
-	else echo "web/ not present yet; skipping"; fi
+web-install: ## install frontend dependencies
+	cd web && npm ci
+
+web: ## build the frontend straight into internal/webui/dist
+	cd web && npm ci && npm run build
+
+dev: ## run the API and the Vite dev server together with hot reload
+	@./scripts/dev.sh
 
 docker:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):dev .

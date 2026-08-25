@@ -21,6 +21,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Node 22: Vite 8 requires ^20.19 || >=22.12, and 22 is the current LTS.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The frontend must exist before anything compiles: internal/webui embeds
+      # it, and the tracked placeholder alone would ship a "UI not built" page.
+      - name: Build frontend
+        run: cd web && npm ci && npm run build
+
       - name: go vet
         run: go vet ./...
 
@@ -63,6 +75,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Deliberately built without the frontend: this proves `go:embed all:dist`
+      # still compiles from the tracked placeholder alone, so a contributor who
+      # has never run npm can build the binary.
       - name: Build
         env:
           CGO_ENABLED: 0
