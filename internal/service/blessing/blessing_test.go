@@ -1,6 +1,7 @@
 package blessing_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
@@ -138,5 +139,35 @@ func TestPickUsesTheSuppliedChooser(t *testing.T) {
 	got := blessing.Pick(candidates, contact(), nil, func(int) int { return 2 })
 	if got == nil || got.ID != 3 {
 		t.Fatalf("picked %v, want the chooser's index honoured", got)
+	}
+}
+
+func TestRenderToleratesANilContact(t *testing.T) {
+	const text = "מזל טוב {{name}}"
+	if got := blessing.Render(text, nil); got != text {
+		t.Fatalf("Render = %q, want the template untouched", got)
+	}
+}
+
+// The chooser must actually spread across the pool, or the no-repeat bias is
+// the only thing producing variety and two templates alternate forever.
+func TestSelectorSpreadsAcrossEquallyGoodTemplates(t *testing.T) {
+	st := newStore(t)
+	for _, text := range []string{"one", "two", "three"} {
+		addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "he", Text: text})
+	}
+	c := addContact(t, st, store.Contact{})
+
+	sel := newSelector(t, st)
+	seen := map[int64]bool{}
+	for range 60 {
+		got, err := sel.ForContact(context.Background(), c)
+		if err != nil {
+			t.Fatalf("ForContact: %v", err)
+		}
+		seen[got.ID] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("only ever picked %d distinct template(s) in 60 tries", len(seen))
 	}
 }

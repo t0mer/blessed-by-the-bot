@@ -392,3 +392,30 @@ func TestNoCatchUpTheFollowingDay(t *testing.T) {
 		t.Fatalf("sent %d messages the day after, want 0", got)
 	}
 }
+
+func TestNewRequiresItsDependencies(t *testing.T) {
+	if _, err := scheduler.New(scheduler.Deps{}); err == nil {
+		t.Fatal("want an error for empty deps")
+	}
+}
+
+// An unloadable timezone is a settings problem the operator must see, and it
+// makes the whole pass meaningless — unlike one contact failing.
+func TestTickFailsOnAnUnknownTimezone(t *testing.T) {
+	h := at(t, time.Date(2026, 5, 17, 9, 30, 0, 0, jerusalem(t)))
+	s := settings.Defaults()
+	s.Scheduler.Timezone = "Asia/Jerusalem"
+	if err := h.settings.Save(context.Background(), s); err != nil {
+		t.Fatalf("saving settings: %v", err)
+	}
+	// Write an invalid zone straight past the service's validation, which is the
+	// only way a bad value can reach the tick in practice (a hand-edited DB).
+	if err := h.store.SetSetting(context.Background(), "scheduler",
+		`{"timezone":"Mars/Olympus","send_time":"09:00"}`); err != nil {
+		t.Fatalf("writing setting: %v", err)
+	}
+
+	if err := h.sched.Tick(context.Background()); err == nil {
+		t.Fatal("want an error for an unloadable timezone")
+	}
+}

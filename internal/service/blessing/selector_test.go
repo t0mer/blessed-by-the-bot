@@ -189,3 +189,19 @@ func TestSelectorAvoidsThePreviousBlessing(t *testing.T) {
 		}
 	}
 }
+
+func TestNewSelectorRequiresItsDependencies(t *testing.T) {
+	if _, err := blessing.NewSelector(nil, logging.NewTo(io.Discard, "error", false)); err == nil {
+		t.Error("want an error without a store")
+	}
+	if _, err := blessing.NewSelector(newStore(t), nil); err == nil {
+		t.Error("want an error without a logger")
+	}
+}
+
+func TestForContactRejectsANilContact(t *testing.T) {
+	st := newStore(t)
+	if _, err := newSelector(t, st).ForContact(context.Background(), nil); err == nil {
+		t.Fatal("want an error for a nil contact")
+	}
+}
