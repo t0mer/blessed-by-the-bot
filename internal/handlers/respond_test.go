@@ -136,3 +136,24 @@ func TestNewRejectsMissingDependencies(t *testing.T) {
 		t.Fatal("want an error for empty deps, got nil")
 	}
 }
+
+// A literal null body leaves a struct at its zero value with no decode error,
+// which would send an empty record through validation as if it were real input.
+func TestDecodeJSONRejectsLiteralNull(t *testing.T) {
+	for _, body := range []string{"null", "  null  ", "   "} {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+
+		var dst struct {
+			Name string `json:"name"`
+		}
+		err := decodeJSON(rec, req, &dst)
+		if err == nil {
+			t.Fatalf("decodeJSON(%q) = nil, want an empty-body error", body)
+		}
+		var apiErr *apiError
+		if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadRequest {
+			t.Fatalf("decodeJSON(%q) gave %#v, want a 400 apiError", body, err)
+		}
+	}
+}

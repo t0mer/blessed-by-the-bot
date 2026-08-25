@@ -9,6 +9,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -146,13 +147,26 @@ func conflictOnUnique(err error, field, message string) error {
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
+	// Capture the raw value first. Decoding straight into dst cannot tell a
+	// literal `null` from an absent body: json leaves dst at its zero value and
+	// reports no error, which would send an empty struct through validation.
+	var raw json.RawMessage
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
+	if err := dec.Decode(&raw); err != nil {
 		return decodeError(err)
 	}
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return errorf(http.StatusBadRequest, codeInvalidJSON, "body must contain a single JSON object")
+	}
+
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || string(trimmed) == "null" {
+		return errorf(http.StatusBadRequest, codeInvalidJSON, "request body is empty")
+	}
+
+	inner := json.NewDecoder(bytes.NewReader(raw))
+	inner.DisallowUnknownFields()
+	if err := inner.Decode(dst); err != nil {
+		return decodeError(err)
 	}
 	return nil
 }
