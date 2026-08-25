@@ -189,9 +189,3 @@ func unknownField(err error) (string, bool) {
 	}
 	return strings.Trim(strings.TrimPrefix(msg, unknownFieldPrefix), `"`), true
 }
-
-// FieldError names one invalid request field. Moved to validate.go in Task 2.
-type FieldError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-}
