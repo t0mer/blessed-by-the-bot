@@ -258,3 +258,21 @@ func TestPutSettingsResponseIsAlsoMasked(t *testing.T) {
 		t.Fatalf("PUT echoed a secret back in plaintext: %s", rec.Body.String())
 	}
 }
+
+// A store failure is not the client's fault. It must not be dressed up as a
+// validation error, and its text must never reach the response body.
+func TestPutSettingsStoreFailureIs500AndLeaksNothing(t *testing.T) {
+	ta := newTestAPI(t)
+	if err := ta.store.Close(); err != nil {
+		t.Fatalf("closing store: %v", err)
+	}
+
+	rec := ta.do(t, http.MethodPut, "/api/v1/settings", configuredSettings())
+	requireStatus(t, rec, http.StatusInternalServerError)
+	if got := errorCode(t, rec); got != codeInternal {
+		t.Fatalf("code = %q, want %q", got, codeInternal)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "sql") || strings.Contains(body, "database") {
+		t.Fatalf("internal detail leaked: %s", body)
+	}
+}

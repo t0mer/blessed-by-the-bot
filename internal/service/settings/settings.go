@@ -42,6 +42,11 @@ const (
 	keyGroupEcho = "group_echo"
 )
 
+// ErrInvalid wraps every validation failure Save can return. Callers use it to
+// separate a bad payload (the user's problem, a 4xx) from a store or cipher
+// failure (ours, a 5xx whose detail must not reach the client).
+var ErrInvalid = errors.New("settings: invalid")
+
 var sendTimePattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
 // GreenAPIConfig is the GreenAPI provider configuration. APIToken and
@@ -122,29 +127,29 @@ func (s *Settings) validate() error {
 	switch s.Provider {
 	case ProviderGreenAPI, ProviderGOWA:
 	default:
-		return fmt.Errorf("unknown provider %q: want %s or %s",
-			s.Provider, ProviderGreenAPI, ProviderGOWA)
+		return fmt.Errorf("%w: unknown provider %q: want %s or %s",
+			ErrInvalid, s.Provider, ProviderGreenAPI, ProviderGOWA)
 	}
 	switch s.GreenAPI.Mode {
 	case "", ModePolling, ModeWebhook:
 	default:
-		return fmt.Errorf("unknown greenapi mode %q: want %s or %s",
-			s.GreenAPI.Mode, ModePolling, ModeWebhook)
+		return fmt.Errorf("%w: unknown greenapi mode %q: want %s or %s",
+			ErrInvalid, s.GreenAPI.Mode, ModePolling, ModeWebhook)
 	}
 	if _, err := time.LoadLocation(s.Scheduler.Timezone); err != nil {
-		return fmt.Errorf("unknown timezone %q: %w", s.Scheduler.Timezone, err)
+		return fmt.Errorf("%w: unknown timezone %q: %s", ErrInvalid, s.Scheduler.Timezone, err)
 	}
 	if !sendTimePattern.MatchString(s.Scheduler.SendTime) {
-		return fmt.Errorf("send time %q must be HH:MM in 24-hour form", s.Scheduler.SendTime)
+		return fmt.Errorf("%w: send time %q must be HH:MM in 24-hour form", ErrInvalid, s.Scheduler.SendTime)
 	}
 	if s.GroupEcho.Threshold < 1 {
-		return fmt.Errorf("group echo threshold %d must be at least 1", s.GroupEcho.Threshold)
+		return fmt.Errorf("%w: group echo threshold %d must be at least 1", ErrInvalid, s.GroupEcho.Threshold)
 	}
 	if s.GroupEcho.WindowHours < 1 {
-		return fmt.Errorf("group echo window %dh must be at least 1", s.GroupEcho.WindowHours)
+		return fmt.Errorf("%w: group echo window %dh must be at least 1", ErrInvalid, s.GroupEcho.WindowHours)
 	}
 	if s.GroupEcho.CooldownHours < 1 {
-		return fmt.Errorf("group echo cooldown %dh must be at least 1", s.GroupEcho.CooldownHours)
+		return fmt.Errorf("%w: group echo cooldown %dh must be at least 1", ErrInvalid, s.GroupEcho.CooldownHours)
 	}
 	return nil
 }
@@ -219,7 +224,7 @@ func (s *Service) LoadMasked(ctx context.Context) (*Settings, error) {
 // value; an empty secret clears it.
 func (s *Service) Save(ctx context.Context, in *Settings) error {
 	if in == nil {
-		return errors.New("settings: nothing to save")
+		return fmt.Errorf("%w: nothing to save", ErrInvalid)
 	}
 	next := *in
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
@@ -36,13 +37,19 @@ func (a *API) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.settings.Save(r.Context(), &incoming); err != nil {
-		// The service returns plain validation errors; they name the offending
-		// setting in their text, so surface them as a 422 rather than a 500.
-		writeError(w, a.log, &apiError{
-			Status:  http.StatusUnprocessableEntity,
-			Code:    codeValidationFailed,
-			Message: err.Error(),
-		})
+		// Only a validation failure is the client's to fix, and only its text is
+		// safe to echo — it names the offending setting and nothing else. A store
+		// or cipher failure falls through to writeError, which logs the detail
+		// and returns a generic 500.
+		if errors.Is(err, settings.ErrInvalid) {
+			writeError(w, a.log, &apiError{
+				Status:  http.StatusUnprocessableEntity,
+				Code:    codeValidationFailed,
+				Message: err.Error(),
+			})
+			return
+		}
+		writeError(w, a.log, err)
 		return
 	}
 
