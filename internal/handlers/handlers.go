@@ -115,6 +115,18 @@ func (a *API) Routes() chi.Router {
 		br.Put("/{id}", a.updateBlessing)
 		br.Delete("/{id}", a.deleteBlessing)
 	})
+
+	// The literal /available is listed beside /{id}: chi prefers a static
+	// segment over a parameter regardless of order, but keeping them adjacent
+	// documents that the picker route must not be parsed as an id.
+	r.Route("/groups", func(gr chi.Router) {
+		gr.Get("/", a.listGroups)
+		gr.Post("/", a.createGroup)
+		gr.Get("/available", a.availableGroups)
+		gr.Get("/{id}", a.getGroup)
+		gr.Put("/{id}", a.updateGroup)
+		gr.Delete("/{id}", a.deleteGroup)
+	})
 	return r
 }
 

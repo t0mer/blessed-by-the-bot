@@ -124,6 +124,22 @@ func MethodNotAllowedJSON(w http.ResponseWriter, _ *http.Request) {
 	}})
 }
 
+// conflictOnUnique turns a SQLite UNIQUE violation into a 409 naming the field.
+// modernc.org/sqlite reports these as text ("constraint failed: UNIQUE
+// constraint failed: groups.chat_id"), so string matching is the available
+// handle; anything else passes through untouched.
+func conflictOnUnique(err error, field, message string) error {
+	if err == nil || !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return err
+	}
+	return &apiError{
+		Status:  http.StatusConflict,
+		Code:    codeConflict,
+		Message: message,
+		Fields:  []FieldError{{Field: field, Message: "must be unique"}},
+	}
+}
+
 // decodeJSON reads exactly one JSON object from the request into dst. Unknown
 // fields are rejected so a typo in the SPA surfaces as a 400 instead of being
 // silently dropped, and a second JSON value in the body is rejected too.
