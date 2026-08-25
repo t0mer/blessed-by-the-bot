@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -51,11 +52,43 @@ func (f *fakeProvider) messages() []string {
 }
 
 type harness struct {
-	engine   *echo.Engine
-	store    *store.Store
-	settings *settings.Service
-	provider *fakeProvider
-	clock    *clock
+	engine    *echo.Engine
+	store     *store.Store
+	settings  *settings.Service
+	provider  *fakeProvider
+	providers *provider.Manager
+	clock     *clock
+}
+
+func discardLogger() *slog.Logger { return logging.NewTo(io.Discard, "error", false) }
+
+func providerManagerFor(p provider.Provider) *provider.Manager {
+	mgr := provider.NewManager()
+	mgr.Set(p)
+	return mgr
+}
+
+func selectorFor(t *testing.T, st *store.Store) *blessing.Selector {
+	t.Helper()
+	sel, err := blessing.NewSelector(st, discardLogger())
+	if err != nil {
+		t.Fatalf("building selector: %v", err)
+	}
+	return sel
+}
+
+// clearBlessings removes the starter templates seeded by migration 0003.
+func clearBlessings(t *testing.T, st *store.Store) {
+	t.Helper()
+	all, err := st.ListBlessings(context.Background())
+	if err != nil {
+		t.Fatalf("listing seeded blessings: %v", err)
+	}
+	for _, b := range all {
+		if err := st.DeleteBlessing(context.Background(), b.ID); err != nil {
+			t.Fatalf("deleting seeded blessing %d: %v", b.ID, err)
+		}
+	}
 }
 
 // clock is a movable time source so window and cooldown behaviour is testable
@@ -116,7 +149,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("building engine: %v", err)
 	}
-	return &harness{engine: engine, store: st, settings: svc, provider: fake, clock: c}
+	return &harness{engine: engine, store: st, settings: svc, provider: fake, providers: mgr, clock: c}
 }
 
 func (h *harness) addGroup(t *testing.T, mutate ...func(*store.Group)) *store.Group {
@@ -404,5 +437,123 @@ func TestSweepDeletesOnlyExpiredWishes(t *testing.T) {
 func TestNewRequiresItsDependencies(t *testing.T) {
 	if _, err := echo.New(echo.Deps{}); err == nil {
 		t.Fatal("want an error for empty deps")
+	}
+}
+
+func TestRunJanitorSweepsUntilCancelled(t *testing.T) {
+	h := newHarness(t)
+	h.addGroup(t)
+	h.deliver(t, wish("aviv@c.us", "old", "מזל טוב"))
+	h.clock.advance(8 * 24 * time.Hour) // past the 7-day retention
+
+	engine, err := echo.New(echo.Deps{
+		Store: h.store, Settings: h.settings, Providers: providerManagerFor(h.provider),
+		Blessings: selectorFor(t, h.store), Logger: discardLogger(),
+		Now: h.clock.Now, JanitorEvery: 5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("building engine: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if err := engine.RunJanitor(ctx); err != nil {
+		t.Fatalf("RunJanitor returned %v, want nil after cancellation", err)
+	}
+
+	remaining, err := h.store.CountDistinctWishSenders(context.Background(), 1, time.Time{})
+	if err != nil {
+		t.Fatalf("counting: %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("%d wish senders remain, want the janitor to have swept them", remaining)
+	}
+}
+
+// The janitor must not take the process down when the database is unreachable.
+func TestRunJanitorSurvivesASweepError(t *testing.T) {
+	h := newHarness(t)
+	if err := h.store.Close(); err != nil {
+		t.Fatalf("closing store: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+
+	engine, err := echo.New(echo.Deps{
+		Store: h.store, Settings: h.settings, Providers: providerManagerFor(h.provider),
+		Blessings: selectorFor(t, h.store), Logger: discardLogger(),
+		Now: h.clock.Now, JanitorEvery: 5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("building engine: %v", err)
+	}
+	if err := engine.RunJanitor(ctx); err != nil {
+		t.Fatalf("RunJanitor returned %v, want nil despite failing sweeps", err)
+	}
+}
+
+// A group with nothing to send must report it rather than posting an empty or
+// placeholder-carrying message.
+func TestEchoWithoutANameFreeTemplateReportsIt(t *testing.T) {
+	h := newHarness(t)
+	h.addGroup(t)
+	clearBlessings(t, h.store)
+	// Only a name-carrying template exists.
+	if _, err := h.store.CreateBlessing(context.Background(), &store.Blessing{
+		EventType: store.EventBirthday, Language: "he", Text: "מזל טוב {{name}}", Enabled: true,
+	}); err != nil {
+		t.Fatalf("creating blessing: %v", err)
+	}
+
+	h.deliver(t, wish("aviv@c.us", "m1", "מזל טוב"), wish("noa@c.us", "m2", "מזל טוב"))
+	err := h.engine.HandleIncoming(context.Background(), wish("yossi@c.us", "m3", "מזל טוב"))
+	if !errors.Is(err, blessing.ErrNoBlessing) {
+		t.Fatalf("err = %v, want ErrNoBlessing", err)
+	}
+	if got := len(h.provider.messages()); got != 0 {
+		t.Fatalf("sent %d messages, want 0", got)
+	}
+}
+
+func TestEchoWithoutAProviderReportsIt(t *testing.T) {
+	h := newHarness(t)
+	h.addGroup(t)
+	h.providers.Clear()
+
+	h.deliver(t, wish("aviv@c.us", "m1", "מזל טוב"), wish("noa@c.us", "m2", "מזל טוב"))
+	if err := h.engine.HandleIncoming(context.Background(), wish("yossi@c.us", "m3", "מזל טוב")); !errors.Is(err, provider.ErrNoProvider) {
+		t.Fatalf("err = %v, want ErrNoProvider", err)
+	}
+}
+
+// A message with no sender or id cannot be counted or deduplicated.
+func TestMessagesWithoutSenderOrIDAreIgnored(t *testing.T) {
+	h := newHarness(t)
+	h.addGroup(t)
+
+	noSender := wish("", "m1", "מזל טוב")
+	noID := wish("aviv@c.us", "", "מזל טוב")
+	h.deliver(t, noSender, noID)
+
+	count, err := h.store.CountDistinctWishSenders(context.Background(), 1, time.Time{})
+	if err != nil {
+		t.Fatalf("counting: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("recorded %d wishes, want 0", count)
+	}
+}
+
+// A database fault while looking up the group is a real error, not chatter.
+func TestStoreFailureIsReported(t *testing.T) {
+	h := newHarness(t)
+	h.addGroup(t)
+	if err := h.store.Close(); err != nil {
+		t.Fatalf("closing store: %v", err)
+	}
+
+	if err := h.engine.HandleIncoming(context.Background(), wish("aviv@c.us", "m1", "מזל טוב")); err == nil {
+		t.Fatal("want the store failure surfaced")
 	}
 }
