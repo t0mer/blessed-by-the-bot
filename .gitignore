@@ -5,7 +5,10 @@ CLAUDE.md
 .aider*
 
 # Planning / design docs — local only. Spec-mandated docs are negated below.
-docs/
+# Note: this must exclude docs/* (the directory contents), not docs/ (the
+# directory). Git cannot re-include a file whose parent directory is excluded,
+# so "docs/" would make the negations below dead letters.
+docs/*
 !docs/api.md
 !docs/providers.md
 *.design.md
