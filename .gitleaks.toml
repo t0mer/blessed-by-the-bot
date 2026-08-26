@@ -1,0 +1,21 @@
+# gitleaks configuration.
+#
+# Keep this minimal: every entry is a detection the scan will no longer make,
+# so each needs a reason that survives review. The default ruleset is extended,
+# never replaced — redefining a rule risks silently weakening its upstream regex.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "SonarQube project identifier is public, not a credential"
+regexTarget = "line"
+
+# Deliberately NOT scoped with `paths`: a path entry in a gitleaks allowlist
+# skips the whole file, which would hide a genuine secret committed alongside
+# this one. The regex is anchored to a complete `sonar.projectKey=<identifier>`
+# line instead, so it can only ever suppress that one setting.
+#
+# sonar.projectKey is public — it appears in every SonarQube dashboard URL —
+# and the generic-api-key rule matches it on entropy alone.
+regexes = ['''^\s*sonar\.projectKey\s*=\s*[A-Za-z0-9_.:\-]+\s*$''']
