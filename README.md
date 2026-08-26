@@ -206,6 +206,11 @@ required in branch protection. The two commercial scanners are **skipped, not
 failed**, when their secrets are absent — an unconfigured integration should not
 put a permanent red X on every PR.
 
+Every third-party action is pinned to a **commit SHA**, and the tools the jobs
+install are pinned to versions — a scanner that runs whatever upstream published
+this morning is its own supply-chain risk. The gitleaks download is checksum-
+verified rather than piped straight into `tar`.
+
 The Go toolchain is pinned in `go.mod` via a `toolchain` directive rather than
 left to float. Most `govulncheck` findings in a project like this are stdlib
 ones, and they are fixed by a patch release; pinning is what makes that
