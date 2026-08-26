@@ -288,3 +288,28 @@ func TestListSendLogFiltersByKindAndAppliesLimit(t *testing.T) {
 		t.Error("empty result is nil; JSON encodes nil as null, want []")
 	}
 }
+
+// A caller that leaves SentAt zero gets the wall clock. Only the scheduler and
+// the echo engine, which run on injectable clocks, stamp it themselves — and
+// the group-echo cooldown reads this column back, so a missing stamp would be a
+// behaviour bug, not a cosmetic one.
+func TestAppendSendLogStampsNowWhenSentAtIsZero(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	contact, err := s.CreateContact(ctx, sampleContact())
+	if err != nil {
+		t.Fatalf("create contact: %v", err)
+	}
+
+	before := time.Now().UTC().Add(-time.Second)
+	got, err := s.AppendSendLog(ctx, scheduledSend(contact.ID, 2026, store.StatusSent))
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	after := time.Now().UTC().Add(time.Second)
+
+	if got.SentAt.Before(before) || got.SentAt.After(after) {
+		t.Fatalf("sent_at = %s, want a stamp between %s and %s", got.SentAt, before, after)
+	}
+}

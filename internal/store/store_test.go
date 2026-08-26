@@ -114,3 +114,27 @@ func TestOpenCreatesParentDirectory(t *testing.T) {
 	}
 	_ = s.Close()
 }
+
+// A corrupt timestamp must surface as an error rather than a zero time: a
+// silently zeroed sent_at would put the group-echo cooldown's last send in year
+// one, and the bot would post into a group it should have stayed quiet in.
+func TestCorruptTimestampIsAnErrorNotAZeroTime(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	group, err := s.CreateGroup(ctx, sampleGroup())
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if _, err := s.DB().Exec(
+		`UPDATE "groups" SET created_at = 'not-a-timestamp' WHERE id = ?`, group.ID); err != nil {
+		t.Fatalf("corrupting the row: %v", err)
+	}
+
+	if _, err := s.GetGroup(ctx, group.ID); err == nil {
+		t.Error("GetGroup accepted an unparsable created_at")
+	}
+	if _, err := s.ListGroups(ctx); err == nil {
+		t.Error("ListGroups accepted an unparsable created_at")
+	}
+}
