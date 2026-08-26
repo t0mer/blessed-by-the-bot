@@ -16,6 +16,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Reset vi.fn() call history between tests. Without this, mock.calls[0] in
+    // one test can be a call made by an earlier one in the same file — an
+    // assertion that reads as passing while checking the wrong thing.
+    clearMocks: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
