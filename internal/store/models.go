@@ -101,3 +101,18 @@ type SendLogEntry struct {
 	EventYear  *int      `json:"event_year"`
 	SentAt     time.Time `json:"sent_at"`
 }
+
+// Notice is a condition the operator should see in the UI — not a failure, but
+// something that will keep happening until they act on it.
+type Notice struct {
+	ID          int64      `json:"id"`
+	Key         string     `json:"key"`
+	Level       string     `json:"level"`
+	Code        string     `json:"code"`
+	Message     string     `json:"message"`
+	Detail      *string    `json:"detail"`
+	Occurrences int        `json:"occurrences"`
+	FirstSeenAt time.Time  `json:"first_seen_at"`
+	LastSeenAt  time.Time  `json:"last_seen_at"`
+	DismissedAt *time.Time `json:"dismissed_at"`
+}
