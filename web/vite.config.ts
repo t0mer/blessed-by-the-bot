@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -11,6 +12,16 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, '../internal/webui/dist'),
     emptyOutDir: true,
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/lib/**', 'src/components/**', 'src/pages/**'],
+    },
   },
   server: {
     port: 5173,
