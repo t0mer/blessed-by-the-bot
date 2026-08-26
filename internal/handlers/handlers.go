@@ -147,6 +147,9 @@ func (a *API) Routes() chi.Router {
 	})
 
 	r.Get("/history", a.listHistory)
+
+	r.Get("/notices", a.listNotices)
+	r.Delete("/notices/{id}", a.dismissNotice)
 	return r
 }
 
