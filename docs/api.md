@@ -471,6 +471,49 @@ $ curl '.../api/v1/history?kind=telepathy'
 
 ---
 
+## Notices
+
+Conditions the operator should act on, but which are not failures worth
+refusing work over. The dashboard renders active ones as a banner.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/notices` | Active notices, newest first. `?all=true` includes dismissed ones. |
+| DELETE | `/api/v1/notices/{id}` | Dismiss one. `204` on success. |
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | |
+| `key` | string | Stable identity. Raising the same key again increments `occurrences` rather than adding a row. |
+| `level` | string | `info`, `warning` or `error`. |
+| `code` | string | Machine-readable kind; the SPA switches on it for wording. |
+| `message` | string | What happened. |
+| `detail` | string \| null | What to do about it. |
+| `occurrences` | integer | How many times the condition has been seen. |
+| `first_seen_at`, `last_seen_at` | string | RFC 3339, UTC. |
+| `dismissed_at` | string \| null | Set once dismissed. |
+
+Dismissing **hides, it does not delete**. The row survives so a recurrence can
+reopen it: the operator acknowledged the last occurrence, not the underlying
+problem.
+
+### Codes
+
+| Code | Raised when |
+|---|---|
+| `language_fallback` | A contact's (or group's) language had no template, so the English one was used. Keyed by event type and language, so a whole address book missing one language produces a single actionable notice. |
+
+```console
+$ curl .../api/v1/notices
+[{"id":1,"key":"language_fallback:birthday:ru","level":"warning","code":"language_fallback",
+  "message":"No birthday blessing in \"ru\"; using the en template instead.",
+  "detail":"Add a birthday template in \"ru\" under Blessings, or the English one keeps being used.",
+  "occurrences":3,"first_seen_at":"2026-08-26T08:06:21.399Z",
+  "last_seen_at":"2026-08-26T08:06:22.206Z","dismissed_at":null}]
+```
+
+---
+
 ## Send now
 
 | Method | Path | Description |

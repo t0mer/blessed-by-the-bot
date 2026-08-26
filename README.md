@@ -157,6 +157,11 @@ Precedence: **flag → environment → config file → default**.
 | `/healthz` | Liveness, including a database ping |
 | `/metrics` | Prometheus metrics |
 
+When a contact's language has no template the bot falls back to English and
+raises a **notice**, shown as a banner on the dashboard with what to do about
+it — a log line is invisible to someone using the web UI, and the condition
+recurs every year until a template is added.
+
 ### Metrics
 
 | Metric | Labels |
