@@ -175,3 +175,24 @@ posts matches the wish patterns, so it would otherwise help trigger itself.
   releases. If your GOWA build emits none of them, self-sent messages will be
   counted as wishes — worth verifying against your version, since a bot echo
   would then contribute one sender toward the next trigger.
+
+
+## Polling vs webhooks: which loop runs
+
+GreenAPI's **polling** mode is the default, and it is what a deployment behind
+NAT should use — it needs no public URL. The application runs the polling loop
+itself, supervised so that it starts, stops and restarts to match your settings:
+
+| Setting | What runs |
+|---|---|
+| GreenAPI + `polling` | The app polls `receiveNotification` continuously |
+| GreenAPI + `webhook` | Nothing polls; GreenAPI must reach `/webhooks/greenapi` |
+| GOWA | Nothing polls; GOWA pushes to `/webhooks/gowa` |
+
+Switching provider or mode in Settings takes effect immediately — no restart.
+Changing the instance ID, token or API URL restarts the loop with the new
+credentials, because the running one holds the old ones.
+
+Polling does **not** start when the instance ID or token is blank. A loop that
+can only ever return 401 would bury a genuine outage in authentication errors,
+so an unconfigured provider stays quiet until you fill the fields in.
