@@ -238,7 +238,7 @@ make docker       # build the image locally
 Stack: Go 1.25, chi, `modernc.org/sqlite` (pure Go — no cgo anywhere),
 React + Vite + TypeScript + Tailwind, Vitest + Testing Library.
 
-The frontend suite covers the logic most likely to drift or bite: the
+The frontend suite (129 tests) covers the logic most likely to drift or bite: the
 recurrence maths (which is duplicated from the Go scheduler, Feb-29 rule
 included), right-to-left detection, the error-envelope contract that puts a
 server-side field error under the right form input, the secret-mask round-trip,
