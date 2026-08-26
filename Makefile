@@ -8,14 +8,17 @@ IMAGE       := techblog/blessed-by-the-bot
 
 export CGO_ENABLED=0
 
-.PHONY: all build build-all run dev test test-race lint fmt tidy web web-install docker clean
+.PHONY: all build build-go run dev test test-race lint fmt tidy web web-install docker clean
 
 all: lint test build
 
-build: ## build the binary into bin/ (uses whatever is already in the embed dir)
-	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/$(BINARY)
+# The frontend first, then the binary that embeds it. A fresh clone must get a
+# working UI from `make build` alone — `build-go` is the fast inner loop for
+# when only Go code changed.
+build: web build-go ## build the frontend and the binary that embeds it
 
-build-all: web build ## build the frontend, then the binary that embeds it
+build-go: ## build only the binary, reusing whatever is in the embed dir
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/$(BINARY)
 
 run: ## run the server in dev mode
 	go run ./cmd/$(BINARY) --dev

@@ -89,7 +89,7 @@ docker run -d \
 ### From source
 
 ```bash
-make build-all   # builds the frontend, then the binary that embeds it
+make build       # builds the frontend, then the binary that embeds it
 export BBTB_ENCRYPTION_KEY="$(./bin/blessedbot genkey)"
 ./bin/blessedbot
 ```
@@ -223,8 +223,8 @@ make dev          # API + Vite dev server with hot reload, on :5173
 make test         # go test ./...
 make test-race    # race detector (needs cgo; shipped builds are CGO_ENABLED=0)
 make lint         # go vet + golangci-lint
-make web          # build the frontend into internal/webui/dist
-make build-all    # frontend + binary
+make web          # build only the frontend into internal/webui/dist
+make build-go     # build only the binary, reusing the existing embed dir
 make docker       # build the image locally
 ```
 
