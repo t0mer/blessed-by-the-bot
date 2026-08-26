@@ -1,0 +1,184 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # A dependency CVE appears without anyone touching the code, so a
+  # commit-triggered scan alone would miss it. Weekly catches that.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-vulns:
+    name: Go vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Reads the toolchain line in go.mod, which is pinned to a patched
+          # release — the stdlib is the largest source of findings here.
+          go-version-file: go.mod
+          cache: true
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # every commit, not just the tip
+
+      # The binary rather than the action: gitleaks-action requires a licence
+      # key for organisation repos, and this needs none.
+      - name: gitleaks
+        run: |
+          set -euo pipefail
+          VERSION=8.29.0
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks detect --log-opts="--all" --redact --no-banner --verbose
+
+  dependencies:
+    name: Dependencies and config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy — dependencies and secrets
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1" # gate the merge
+          skip-dirs: web/node_modules,internal/webui/dist
+
+      - name: Trivy — Dockerfile and compose misconfiguration
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: config
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build locally rather than pulling a published tag, so a vulnerability is
+      # caught before it is ever pushed to a registry.
+      - name: Build image
+        run: docker build --build-arg VERSION=ci -t blessedbot:ci .
+
+      - name: Trivy — image
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: image
+          image-ref: blessedbot:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  frontend:
+    name: Frontend dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm audit
+        run: cd web && npm ci && npm audit --audit-level=high
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # actionlint catches expression-injection patterns and bad runner labels
+      # in the workflows themselves.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          actionlint
+
+  snyk:
+    name: Snyk
+    runs-on: ubuntu-latest
+    # Secrets are not available in a job-level `if`, so the guard is on the
+    # steps: without SNYK_TOKEN configured the job is a no-op rather than a
+    # permanent red X on every PR.
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report when unconfigured
+        if: env.SNYK_TOKEN == ''
+        run: echo "::notice::SNYK_TOKEN is not set; skipping. Add the secret to enable this gate."
+
+      - uses: actions/setup-go@v5
+        if: env.SNYK_TOKEN != ''
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: snyk/actions/golang@master
+        if: env.SNYK_TOKEN != ''
+        with:
+          args: --severity-threshold=high --all-projects
+
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Sonar needs history for new-code detection
+
+      - name: Report when unconfigured
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN is not set; skipping. Add SONAR_TOKEN (and SONAR_HOST_URL for self-hosted) to enable this gate."
+
+      - uses: actions/setup-go@v5
+        if: env.SONAR_TOKEN != ''
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Sonar reads coverage from this report; without it the quality gate
+      # judges coverage as zero and fails for the wrong reason.
+      - name: Test with coverage
+        if: env.SONAR_TOKEN != ''
+        run: go test ./... -coverprofile=coverage.out -covermode=atomic
+
+      - uses: SonarSource/sonarqube-scan-action@v4
+        if: env.SONAR_TOKEN != ''
