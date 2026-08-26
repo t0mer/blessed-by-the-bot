@@ -493,3 +493,78 @@ func TestFreshInstallPicksTheGenderedForm(t *testing.T) {
 		t.Errorf("text = %q, want a male Hebrew form", sent[0].Text)
 	}
 }
+
+// movableClock lets a test walk the calendar forward.
+type movableClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *movableClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *movableClock) set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = t
+}
+
+// Spec §15: the same contact must be greeted again the following year. The
+// dedupe key is (contact, event_year), so a new year is a new key — but nothing
+// else asserts that the second year actually fires.
+func TestFiresAgainTheFollowingYear(t *testing.T) {
+	clock := &movableClock{now: time.Date(2026, 5, 17, 9, 30, 0, 0, jerusalem(t))}
+	h := at(t, clock.now, func(d *scheduler.Deps) { d.Now = clock.Now })
+	seedBlessing(t, h.store, "מזל טוב {{name}}")
+	seedContact(t, h.store)
+
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("first year Tick: %v", err)
+	}
+	if got := len(h.provider.messages()); got != 1 {
+		t.Fatalf("sent %d messages in the first year, want 1", got)
+	}
+
+	// Later the same year: still quiet.
+	clock.set(time.Date(2026, 11, 3, 9, 30, 0, 0, jerusalem(t)))
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("mid-year Tick: %v", err)
+	}
+	if got := len(h.provider.messages()); got != 1 {
+		t.Fatalf("sent %d messages, want the yearly dedupe to hold", got)
+	}
+
+	// The next birthday: it must fire again.
+	clock.set(time.Date(2027, 5, 17, 9, 30, 0, 0, jerusalem(t)))
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("second year Tick: %v", err)
+	}
+	if got := len(h.provider.messages()); got != 2 {
+		t.Fatalf("sent %d messages, want a second blessing in 2027", got)
+	}
+
+	// ...and only once in that year too.
+	if err := h.sched.Tick(context.Background()); err != nil {
+		t.Fatalf("second year repeat Tick: %v", err)
+	}
+	if got := len(h.provider.messages()); got != 2 {
+		t.Fatalf("sent %d messages, want exactly one per year", got)
+	}
+
+	entries, err := h.store.ListSendLog(context.Background(), store.KindScheduled, 10)
+	if err != nil {
+		t.Fatalf("listing send log: %v", err)
+	}
+	years := map[int]bool{}
+	for _, e := range entries {
+		if e.EventYear != nil {
+			years[*e.EventYear] = true
+		}
+	}
+	if !years[2026] || !years[2027] {
+		t.Fatalf("send log years = %v, want one row for each of 2026 and 2027", years)
+	}
+}
