@@ -105,16 +105,22 @@ export function Field({
   error?: string
   children: ReactNode
 }) {
+  // The hint and error sit outside the <label> on purpose. An implicitly
+  // labelled input takes its accessible name from the label's whole text
+  // content, so a hint inside it would be announced as part of the field's
+  // name — "Text Use {{name}} to insert the contact's name" instead of "Text".
   return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium">{label}</span>
-      {children}
+    <div className="space-y-1.5">
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{label}</span>
+        {children}
+      </label>
       {error ? (
         <span className="block text-xs text-danger">{error}</span>
       ) : hint ? (
         <span className="block text-xs text-muted-foreground">{hint}</span>
       ) : null}
-    </label>
+    </div>
   )
 }
 
