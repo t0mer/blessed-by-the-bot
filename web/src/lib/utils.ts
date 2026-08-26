@@ -6,10 +6,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** formatDate renders DD/MM/YYYY, the format the spec fixes for this UI. */
+/** Matches a zero-padded YYYY-MM-DD, the shape the API stores event dates in. */
+const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/**
+ * formatDate renders DD/MM/YYYY, the format the spec fixes for this UI.
+ *
+ * The shape is validated rather than just split on "-": "not-a-date" also
+ * splits into three truthy parts and would otherwise render as "date/a/not".
+ */
 export function formatDate(value: string): string {
-  const [year, month, day] = value.split('-')
-  if (!year || !month || !day) return value
+  const parts = isoDate.exec(value)
+  if (!parts) return value
+  const [, year, month, day] = parts
   return `${day}/${month}/${year}`
 }
 
