@@ -27,6 +27,7 @@ import (
 	"github.com/t0mer/blessed-by-the-bot/internal/server"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/blessing"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/echo"
+	"github.com/t0mer/blessed-by-the-bot/internal/service/listener"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/scheduler"
 	"github.com/t0mer/blessed-by-the-bot/internal/service/settings"
 	"github.com/t0mer/blessed-by-the-bot/internal/store"
@@ -163,9 +164,25 @@ func run(cmd *cobra.Command) error {
 		return err
 	}
 
+	// GreenAPI's polling mode is the default because it needs no public URL.
+	// The supervisor owns that loop's lifecycle: GOWA pushes webhooks instead,
+	// so it starts and stops the poller to match whichever provider is active.
+	listen, err := listener.New(listener.Deps{
+		Settings:  settingsSvc,
+		Transport: transport,
+		Incoming:  echoEngine,
+		Logger:    log,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Rebuilding on a settings change is what lets the user switch providers or
 	// fix a token from the UI without restarting the process (spec §4).
 	rebuild := func(_ context.Context, s *settings.Settings) error {
+		// Wake the supervisor even when the rebuild fails: the change may have
+		// been "stop using GreenAPI", which it still needs to act on.
+		defer listen.Notify()
 		if err := factory.Rebuild(providers, s, transport, log); err != nil {
 			return err
 		}
@@ -194,6 +211,7 @@ func run(cmd *cobra.Command) error {
 	group.Go(func() error { return srv.Run(groupCtx) })
 	group.Go(func() error { return sched.Run(groupCtx) })
 	group.Go(func() error { return echoEngine.RunJanitor(groupCtx) })
+	group.Go(func() error { return listen.Run(groupCtx) })
 	return group.Wait()
 }
 
