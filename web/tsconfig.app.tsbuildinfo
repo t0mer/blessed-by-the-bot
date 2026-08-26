@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/components/ui/index.tsx","./src/lib/api.ts","./src/lib/i18n.tsx","./src/lib/theme.tsx","./src/lib/useApi.ts","./src/lib/utils.ts","./src/pages/Blessings.tsx","./src/pages/Contacts.tsx","./src/pages/Dashboard.tsx","./src/pages/Groups.tsx","./src/pages/Settings.tsx"],"version":"5.9.3"}

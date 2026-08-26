@@ -38,6 +38,9 @@ vendor/
 web/node_modules/
 web/dist/
 web/.vite/
+# TypeScript incremental build state and Vitest coverage output.
+web/*.tsbuildinfo
+web/coverage/
 *.log
 npm-debug.log*
 
