@@ -141,18 +141,28 @@ func scanBlessing(sc scanner) (*Blessing, error) {
 	return &b, nil
 }
 
-// ApplySeedBlessings re-runs the starter-template seed from migration 0003.
+// seedBlessingMigrations lists every migration that inserts starter templates,
+// in apply order. A new seed migration has to be added here too, or the helper
+// below quietly stops restoring the full set a fresh install would have.
+var seedBlessingMigrations = []string{
+	"migrations/0003_seed_blessings.sql",
+	"migrations/0005_seed_custom_name_free_blessings.sql",
+}
+
+// ApplySeedBlessings re-runs the starter-template seed migrations.
 //
 // It exists for tests that clear the table to get a controlled set and then
 // need the real seed back to exercise fresh-install behaviour. Running it twice
 // duplicates the rows, so it is not something the application calls.
 func (s *Store) ApplySeedBlessings(ctx context.Context) error {
-	body, err := migrationsFS.ReadFile("migrations/0003_seed_blessings.sql")
-	if err != nil {
-		return fmt.Errorf("reading the blessing seed: %w", err)
-	}
-	if _, err := s.db.ExecContext(ctx, string(body)); err != nil {
-		return fmt.Errorf("applying the blessing seed: %w", err)
+	for _, name := range seedBlessingMigrations {
+		body, err := migrationsFS.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("reading the blessing seed %s: %w", name, err)
+		}
+		if _, err := s.db.ExecContext(ctx, string(body)); err != nil {
+			return fmt.Errorf("applying the blessing seed %s: %w", name, err)
+		}
 	}
 	return nil
 }

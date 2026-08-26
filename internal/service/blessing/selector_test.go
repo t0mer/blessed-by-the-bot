@@ -385,3 +385,43 @@ type failingNotifier struct{}
 func (failingNotifier) RaiseNotice(context.Context, store.Notice) error {
 	return errors.New("database is on fire")
 }
+
+// Migration 0003 promises a name-free template for every event type and
+// language it seeds. Group echo depends on that promise: the bot does not know
+// whose birthday it is, so a seed edit that left, say, Hebrew weddings with
+// only "{{name}}" templates would silence the echo for that pair. Assert on the
+// seeded data rather than through ForGroup, whose English fallback would hide
+// exactly the gap this guards.
+func TestSeedHasANameFreeTemplateForEveryEventTypeAndLanguage(t *testing.T) {
+	st := newStore(t)
+	if err := st.ApplySeedBlessings(context.Background()); err != nil {
+		t.Fatalf("restoring the seed: %v", err)
+	}
+
+	seeded, err := st.ListBlessings(context.Background())
+	if err != nil {
+		t.Fatalf("listing blessings: %v", err)
+	}
+	if len(seeded) == 0 {
+		t.Fatal("the seed produced no templates")
+	}
+
+	type pair struct{ eventType, language string }
+	nameFree := make(map[pair]bool)
+	for _, b := range seeded {
+		key := pair{b.EventType, b.Language}
+		if _, seen := nameFree[key]; !seen {
+			nameFree[key] = false
+		}
+		if b.Enabled && !blessing.HasNamePlaceholder(b.Text) {
+			nameFree[key] = true
+		}
+	}
+
+	for key, ok := range nameFree {
+		if !ok {
+			t.Errorf("seed has no enabled name-free %s template in %q; group echo cannot post one",
+				key.eventType, key.language)
+		}
+	}
+}
