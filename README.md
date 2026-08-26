@@ -97,8 +97,9 @@ export BBTB_ENCRYPTION_KEY="$(./bin/blessedbot genkey)"
 ## First run
 
 The database ships with **starter blessing templates** (Hebrew and English, for
-birthdays, weddings and anniversaries) and **wish patterns**, so the bot can send
-before you have written anything. All of them are editable or deletable.
+birthdays, weddings, anniversaries and custom events) and **wish patterns**, so
+the bot can send before you have written anything. All of them are editable or
+deletable.
 
 You still need to:
 

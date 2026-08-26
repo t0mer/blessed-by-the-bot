@@ -166,9 +166,11 @@ $ curl -X POST -H 'Content-Type: application/json' \
  "created_at":"2026-08-25T17:32:46.68660386Z","updated_at":"2026-08-25T17:32:46.68660386Z"}
 ```
 
-> **Fresh installs ship no blessings.** Migration `0002` seeds wish *patterns*
-> only. Add at least one blessing per event type and language you use, or
-> scheduled sends will find no template.
+> **Fresh installs ship starter templates.** Migrations `0003` and `0005` seed
+> Hebrew and English blessings for every event type, so the bot can send before
+> you write anything. They are ordinary rows: edit or delete them freely. A
+> language you use that has no template falls back to English and raises a
+> notice.
 
 ---
 
@@ -618,8 +620,9 @@ An authentic group message is handed to the **group echo engine**:
 
 The blessing chosen for a group is always **name-free**: the bot sees the burst
 but does not know whose birthday it is, so templates containing `{{name}}` (and
-templates targeted at a gender or relation) are excluded. Migration 0003 seeds
-name-free templates for every event type so this works on a fresh install.
+templates targeted at a gender or relation) are excluded. The starter seed
+(migrations 0003 and 0005) carries a name-free template for every event type
+and language, so this works on a fresh install.
 
 Window, threshold and cooldown come from `group_echo` in Settings; a group may
 override the threshold. `wish_events` older than 7 days are swept nightly.
