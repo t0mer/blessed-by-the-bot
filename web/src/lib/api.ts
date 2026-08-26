@@ -99,6 +99,19 @@ export interface Settings {
   provider_error?: string
 }
 
+export interface Notice {
+  id: number
+  key: string
+  level: 'info' | 'warning' | 'error'
+  code: string
+  message: string
+  detail: string | null
+  occurrences: number
+  first_seen_at: string
+  last_seen_at: string
+  dismissed_at: string | null
+}
+
 export interface Health {
   status: string
   version: string
@@ -197,6 +210,9 @@ export const api = {
       phone,
       message: message ?? '',
     }),
+
+  notices: (all = false) => request<Notice[]>('GET', `/notices${all ? '?all=true' : ''}`),
+  dismissNotice: (id: number) => request<void>('DELETE', `/notices/${id}`),
 
   history: (kind?: string, limit = 25) =>
     request<SendLogEntry[]>(

@@ -37,6 +37,10 @@ const dictionaries: Record<Language, Record<string, string>> = {
     'common.saving': 'Saving…',
     'common.optional': 'optional',
 
+    'notices.title': 'Needs your attention',
+    'notices.dismiss': 'Dismiss',
+    'notices.seenTimes': 'seen {n} times',
+    'notices.language_fallback': 'Missing translation',
     'dashboard.provider': 'Provider',
     'dashboard.connected': 'Connected',
     'dashboard.disconnected': 'Not connected',
@@ -184,6 +188,10 @@ const dictionaries: Record<Language, Record<string, string>> = {
     'common.saving': 'שומר…',
     'common.optional': 'לא חובה',
 
+    'notices.title': 'דורש טיפול',
+    'notices.dismiss': 'סגירה',
+    'notices.seenTimes': 'נראה {n} פעמים',
+    'notices.language_fallback': 'חסר תרגום',
     'dashboard.provider': 'ספק',
     'dashboard.connected': 'מחובר',
     'dashboard.disconnected': 'לא מחובר',

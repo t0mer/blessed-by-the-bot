@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 
-import { Badge, Card, CardTitle, EmptyState, ErrorNote, Spinner } from '@/components/ui'
+import { Badge, Button, Card, CardTitle, EmptyState, ErrorNote, Spinner } from '@/components/ui'
 import { api } from '@/lib/api'
-import type { Contact, SendLogEntry } from '@/lib/api'
+import type { Contact, Notice, SendLogEntry } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { useApi } from '@/lib/useApi'
 import { daysUntil, formatDateTime, nextOccurrence } from '@/lib/utils'
@@ -17,9 +17,11 @@ export default function Dashboard() {
   const status = useApi(() => api.providerStatus().catch(() => null), [], REFRESH_MS)
   const contacts = useApi(() => api.listContacts(), [], REFRESH_MS)
   const history = useApi(() => api.history(undefined, 10), [], REFRESH_MS)
+  const notices = useApi(() => api.notices(), [], REFRESH_MS)
 
   return (
     <div className="space-y-4">
+      <Notices items={notices.data ?? []} onDismissed={notices.reload} />
       <ProviderCard status={status.data} loading={status.loading} />
       <StatsRow contacts={contacts.data} history={history.data} />
 
@@ -49,6 +51,53 @@ export default function Dashboard() {
         )}
       </Card>
     </div>
+  )
+}
+
+/**
+ * Notices surfaces conditions the operator needs to act on — currently a
+ * language fallback, where a blessing went out in English because the contact's
+ * own language had no template (spec §6). A log line is invisible to someone
+ * using the web UI, and the condition recurs every year until it is fixed.
+ */
+function Notices({ items, onDismissed }: { items: Notice[]; onDismissed: () => void }) {
+  const { t } = useI18n()
+  if (items.length === 0) return null
+
+  const dismiss = async (id: number) => {
+    await api.dismissNotice(id)
+    onDismissed()
+  }
+
+  return (
+    <Card className="border-warning/50 bg-warning/10">
+      <CardTitle>{t('notices.title')}</CardTitle>
+      <ul className="space-y-3">
+        {items.map((n) => (
+          <li key={n.id} className="flex flex-wrap items-start gap-2">
+            <div className="min-w-0 grow">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={n.level === 'error' ? 'danger' : 'warning'}>
+                  {t(`notices.${n.code}`)}
+                </Badge>
+                {n.occurrences > 1 ? (
+                  <span className="text-xs text-muted-foreground">
+                    {t('notices.seenTimes', { n: n.occurrences })}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-sm">{n.message}</p>
+              {n.detail ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">{n.detail}</p>
+              ) : null}
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => void dismiss(n.id)}>
+              {t('notices.dismiss')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
   )
 }
 
