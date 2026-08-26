@@ -8,7 +8,7 @@ IMAGE       := techblog/blessed-by-the-bot
 
 export CGO_ENABLED=0
 
-.PHONY: all build build-go run dev test test-race lint fmt tidy web web-install docker clean
+.PHONY: all build build-go run dev test test-go test-web test-race lint fmt tidy web web-install docker clean
 
 all: lint test build
 
@@ -23,13 +23,18 @@ build-go: ## build only the binary, reusing whatever is in the embed dir
 run: ## run the server in dev mode
 	go run ./cmd/$(BINARY) --dev
 
-test:
+test: test-go test-web ## run the Go and frontend suites
+
+test-go:
 	go test ./...
+
+test-web: ## type-check and test the frontend
+	cd web && npx tsc -b && npm test
 
 test-race:
 	CGO_ENABLED=1 go test -race ./...
 
-lint:
+lint: ## vet and lint the Go code
 	go vet ./...
 	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || echo "golangci-lint not installed, ran go vet only"
 

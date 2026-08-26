@@ -33,6 +33,12 @@ jobs:
       - name: Build frontend
         run: cd web && npm ci && npm run build
 
+      - name: Frontend type check
+        run: cd web && npx tsc -b
+
+      - name: Frontend tests
+        run: cd web && npm test
+
       - name: go vet
         run: go vet ./...
 

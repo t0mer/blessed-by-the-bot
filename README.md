@@ -225,7 +225,9 @@ upgrade an explicit, reviewable change.
 
 ```bash
 make dev          # API + Vite dev server with hot reload, on :5173
-make test         # go test ./...
+make test         # Go and frontend suites
+make test-go      # go test ./...
+make test-web     # frontend type check + vitest
 make test-race    # race detector (needs cgo; shipped builds are CGO_ENABLED=0)
 make lint         # go vet + golangci-lint
 make web          # build only the frontend into internal/webui/dist
@@ -234,7 +236,14 @@ make docker       # build the image locally
 ```
 
 Stack: Go 1.25, chi, `modernc.org/sqlite` (pure Go — no cgo anywhere),
-React + Vite + TypeScript + Tailwind.
+React + Vite + TypeScript + Tailwind, Vitest + Testing Library.
+
+The frontend suite covers the logic most likely to drift or bite: the
+recurrence maths (which is duplicated from the Go scheduler, Feb-29 rule
+included), right-to-left detection, the error-envelope contract that puts a
+server-side field error under the right form input, the secret-mask round-trip,
+and Hebrew/English dictionary parity — a key added to one dictionary and
+forgotten in the other is otherwise invisible.
 
 ## License
 
