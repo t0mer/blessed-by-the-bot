@@ -8,7 +8,7 @@ IMAGE       := techblog/blessed-by-the-bot
 
 export CGO_ENABLED=0
 
-.PHONY: all build build-go run dev test test-go test-web test-race lint fmt tidy web web-install docker clean
+.PHONY: all build build-go run dev test test-go test-web test-race lint fmt tidy web web-deps web-install docker clean
 
 all: lint test build
 
@@ -28,8 +28,14 @@ test: test-go test-web ## run the Go and frontend suites
 test-go:
 	go test ./...
 
-test-web: ## type-check and test the frontend
+test-web: web-deps ## type-check and test the frontend
 	cd web && npx tsc -b && npm test
+
+# Install only when node_modules is absent: `npm ci` on every run would make the
+# inner loop crawl, but without it a fresh clone has no tsc and npx would fetch
+# an unrelated package from the registry.
+web-deps:
+	@[ -d web/node_modules ] || (cd web && npm ci)
 
 test-race:
 	CGO_ENABLED=1 go test -race ./...
