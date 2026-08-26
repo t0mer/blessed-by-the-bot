@@ -184,6 +184,33 @@ Series with known labels are created at startup, so a quiet instance reports
   home-lab deployment; do not expose it to the internet without a reverse proxy
   that adds authentication.
 
+## Security scanning
+
+CI runs these on every push and pull request, and weekly on a schedule — a
+dependency CVE can appear without anyone touching the code:
+
+| Scanner | Covers | Needs a secret |
+|---|---|---|
+| `govulncheck` | Go dependencies and the standard library | no |
+| `gitleaks` | hardcoded secrets, across the full git history | no |
+| Trivy (fs) | dependency CVEs and secrets in the tree | no |
+| Trivy (config) | Dockerfile and compose misconfiguration | no |
+| Trivy (image) | the container image, built fresh in CI | no |
+| `npm audit` | frontend dependencies | no |
+| `actionlint` | the workflows themselves, including injection patterns | no |
+| Snyk | Go dependencies | `SNYK_TOKEN` |
+| SonarQube | static analysis and coverage | `SONAR_TOKEN`, `SONAR_HOST_URL` |
+
+Each job fails the build on a HIGH or CRITICAL finding, so they can be marked
+required in branch protection. The two commercial scanners are **skipped, not
+failed**, when their secrets are absent — an unconfigured integration should not
+put a permanent red X on every PR.
+
+The Go toolchain is pinned in `go.mod` via a `toolchain` directive rather than
+left to float. Most `govulncheck` findings in a project like this are stdlib
+ones, and they are fixed by a patch release; pinning is what makes that
+upgrade an explicit, reviewable change.
+
 ## Development
 
 ```bash
