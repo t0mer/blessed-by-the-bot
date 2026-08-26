@@ -3,8 +3,10 @@ package blessing_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/t0mer/blessed-by-the-bot/internal/logging"
@@ -286,4 +288,100 @@ func TestForGroupWorksWithTheSeededSet(t *testing.T) {
 			t.Fatalf("seeded group template %q carries a name placeholder", got.Text)
 		}
 	}
+}
+
+// Spec §6: a language fallback must reach the UI, not just the log.
+func TestLanguageFallbackRaisesANotice(t *testing.T) {
+	st := newStore(t)
+	addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "en", Text: "Happy birthday {{name}}"})
+	c := addContact(t, st, store.Contact{Language: "ru"})
+
+	if _, err := newSelector(t, st).ForContact(context.Background(), c); err != nil {
+		t.Fatalf("ForContact: %v", err)
+	}
+
+	notices, err := st.ListNotices(context.Background(), true)
+	if err != nil {
+		t.Fatalf("listing notices: %v", err)
+	}
+	if len(notices) != 1 {
+		t.Fatalf("got %d notices, want 1", len(notices))
+	}
+	if notices[0].Code != store.NoticeLanguageFallback {
+		t.Errorf("code = %q, want %q", notices[0].Code, store.NoticeLanguageFallback)
+	}
+	if !strings.Contains(notices[0].Message, "ru") {
+		t.Errorf("message = %q, want it to name the language", notices[0].Message)
+	}
+	if notices[0].Detail == nil || !strings.Contains(*notices[0].Detail, "Blessings") {
+		t.Errorf("detail = %v, want it to say what to do about it", notices[0].Detail)
+	}
+}
+
+// A whole address book missing one language must produce one actionable notice,
+// not one per contact.
+func TestRepeatedFallbacksCollapseIntoOneNotice(t *testing.T) {
+	st := newStore(t)
+	addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "en", Text: "Happy birthday {{name}}"})
+	sel := newSelector(t, st)
+
+	for i := range 4 {
+		c := addContact(t, st, store.Contact{
+			Name:     fmt.Sprintf("Ivan %d", i),
+			Phone:    fmt.Sprintf("7916123456%d", i),
+			Language: "ru",
+		})
+		if _, err := sel.ForContact(context.Background(), c); err != nil {
+			t.Fatalf("ForContact: %v", err)
+		}
+	}
+
+	notices, err := st.ListNotices(context.Background(), true)
+	if err != nil {
+		t.Fatalf("listing notices: %v", err)
+	}
+	if len(notices) != 1 {
+		t.Fatalf("got %d notices, want them collapsed into 1", len(notices))
+	}
+	if notices[0].Occurrences != 4 {
+		t.Errorf("occurrences = %d, want 4", notices[0].Occurrences)
+	}
+}
+
+// No fallback, no notice — the UI must not nag when nothing is wrong.
+func TestNoNoticeWhenTheContactLanguageIsAvailable(t *testing.T) {
+	st := newStore(t)
+	addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "he", Text: "מזל טוב {{name}}"})
+	c := addContact(t, st, store.Contact{Language: "he"})
+
+	if _, err := newSelector(t, st).ForContact(context.Background(), c); err != nil {
+		t.Fatalf("ForContact: %v", err)
+	}
+	notices, err := st.ListNotices(context.Background(), true)
+	if err != nil {
+		t.Fatalf("listing notices: %v", err)
+	}
+	if len(notices) != 0 {
+		t.Fatalf("got %d notices, want none", len(notices))
+	}
+}
+
+// Losing a notice must never turn a successful send into a failure.
+func TestNoticeFailureDoesNotBreakSelection(t *testing.T) {
+	st := newStore(t)
+	addBlessing(t, st, store.Blessing{EventType: store.EventBirthday, Language: "en", Text: "Happy birthday {{name}}"})
+	c := addContact(t, st, store.Contact{Language: "ru"})
+
+	sel := newSelector(t, st)
+	sel.SetNotifier(failingNotifier{})
+
+	if _, err := sel.ForContact(context.Background(), c); err != nil {
+		t.Fatalf("ForContact: %v, want the send to proceed regardless", err)
+	}
+}
+
+type failingNotifier struct{}
+
+func (failingNotifier) RaiseNotice(context.Context, store.Notice) error {
+	return errors.New("database is on fire")
 }
