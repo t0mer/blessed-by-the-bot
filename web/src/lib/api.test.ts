@@ -160,3 +160,49 @@ describe('SECRET_MASK', () => {
     expect(SECRET_MASK).toHaveLength(4)
   })
 })
+
+// Every wrapper's method and path, checked against docs/api.md. A typo here is
+// invisible until the UI 404s at runtime, and the table is cheaper than finding
+// that out from a screenshot.
+describe('endpoint table', () => {
+  const cases: Array<[string, () => Promise<unknown>, string, string]> = [
+    ['health', () => api.health(), 'GET', '/api/v1/healthz'],
+
+    ['listContacts', () => api.listContacts(), 'GET', '/api/v1/contacts'],
+    ['createContact', () => api.createContact({}), 'POST', '/api/v1/contacts'],
+    ['updateContact', () => api.updateContact(7, {}), 'PUT', '/api/v1/contacts/7'],
+    ['deleteContact', () => api.deleteContact(7), 'DELETE', '/api/v1/contacts/7'],
+
+    ['listBlessings', () => api.listBlessings(), 'GET', '/api/v1/blessings'],
+    ['createBlessing', () => api.createBlessing({}), 'POST', '/api/v1/blessings'],
+    ['updateBlessing', () => api.updateBlessing(7, {}), 'PUT', '/api/v1/blessings/7'],
+    ['deleteBlessing', () => api.deleteBlessing(7), 'DELETE', '/api/v1/blessings/7'],
+
+    ['listGroups', () => api.listGroups(), 'GET', '/api/v1/groups'],
+    ['availableGroups', () => api.availableGroups(), 'GET', '/api/v1/groups/available'],
+    ['createGroup', () => api.createGroup({}), 'POST', '/api/v1/groups'],
+    ['updateGroup', () => api.updateGroup(7, {}), 'PUT', '/api/v1/groups/7'],
+    ['deleteGroup', () => api.deleteGroup(7), 'DELETE', '/api/v1/groups/7'],
+
+    ['listWishPatterns', () => api.listWishPatterns(), 'GET', '/api/v1/wish-patterns'],
+    ['createWishPattern', () => api.createWishPattern({}), 'POST', '/api/v1/wish-patterns'],
+    ['updateWishPattern', () => api.updateWishPattern(7, {}), 'PUT', '/api/v1/wish-patterns/7'],
+    ['deleteWishPattern', () => api.deleteWishPattern(7), 'DELETE', '/api/v1/wish-patterns/7'],
+
+    ['getSettings', () => api.getSettings(), 'GET', '/api/v1/settings'],
+    ['saveSettings', () => api.saveSettings({}), 'PUT', '/api/v1/settings'],
+
+    ['providerStatus', () => api.providerStatus(), 'GET', '/api/v1/provider/status'],
+    ['providerTest', () => api.providerTest('972500000001'), 'POST', '/api/v1/provider/test'],
+
+    ['notices', () => api.notices(), 'GET', '/api/v1/notices'],
+    ['dismissNotice', () => api.dismissNotice(7), 'DELETE', '/api/v1/notices/7'],
+  ]
+
+  it.each(cases)('%s issues %s %s', async (_name, call, method, path) => {
+    const calls = mockFetch({ body: {} })
+    await call()
+    expect(calls[0].init?.method).toBe(method)
+    expect(calls[0].url).toBe(path)
+  })
+})
