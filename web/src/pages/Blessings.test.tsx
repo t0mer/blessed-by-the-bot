@@ -8,6 +8,7 @@ import Blessings from './Blessings'
 
 const listBlessings = vi.fn()
 const createBlessing = vi.fn()
+const updateBlessing = vi.fn()
 const deleteBlessing = vi.fn()
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -17,7 +18,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     api: {
       listBlessings: () => listBlessings(),
       createBlessing: (b: unknown) => createBlessing(b),
-      updateBlessing: vi.fn(),
+      updateBlessing: (id: number, b: unknown) => updateBlessing(id, b),
       deleteBlessing: (id: number) => deleteBlessing(id),
     },
   }
@@ -49,6 +50,7 @@ function typeTemplate(value: string) {
 beforeEach(() => {
   listBlessings.mockResolvedValue([])
   createBlessing.mockResolvedValue(blessing())
+  updateBlessing.mockResolvedValue(blessing())
   deleteBlessing.mockResolvedValue(undefined)
 })
 
@@ -175,5 +177,35 @@ describe('the editor', () => {
 
     await waitFor(() => expect(createBlessing).toHaveBeenCalled())
     expect((createBlessing.mock.calls[0][0] as Record<string, unknown>).event_type).toBe('wedding')
+  })
+})
+
+describe('editing an existing template', () => {
+  // The risk this guards: an edit that posts instead of putting leaves the old
+  // wording in the rotation and quietly doubles the pool.
+  it('updates in place instead of adding a second copy', async () => {
+    listBlessings.mockResolvedValue([blessing()])
+    renderBlessings()
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+
+    typeTemplate('מזל טוב וכל טוב {{name}}')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(updateBlessing).toHaveBeenCalled())
+    expect(updateBlessing.mock.calls[0][0]).toBe(1)
+    expect((updateBlessing.mock.calls[0][1] as { text: string }).text).toBe('מזל טוב וכל טוב {{name}}')
+    expect(createBlessing).not.toHaveBeenCalled()
+  })
+
+  it('deletes only after the prompt is accepted', async () => {
+    listBlessings.mockResolvedValue([blessing()])
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    renderBlessings()
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+    expect(deleteBlessing).not.toHaveBeenCalled()
+
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(deleteBlessing).toHaveBeenCalledWith(1))
   })
 })

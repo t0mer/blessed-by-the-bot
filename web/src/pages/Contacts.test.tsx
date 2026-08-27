@@ -8,6 +8,7 @@ import Contacts from './Contacts'
 
 const listContacts = vi.fn()
 const createContact = vi.fn()
+const updateContact = vi.fn()
 const deleteContact = vi.fn()
 const sendNow = vi.fn()
 
@@ -18,7 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     api: {
       listContacts: () => listContacts(),
       createContact: (c: unknown) => createContact(c),
-      updateContact: vi.fn(),
+      updateContact: (id: number, c: unknown) => updateContact(id, c),
       deleteContact: (id: number) => deleteContact(id),
       sendNow: (id: number) => sendNow(id),
     },
@@ -42,6 +43,7 @@ const renderContacts = () =>
 beforeEach(() => {
   listContacts.mockResolvedValue([])
   createContact.mockResolvedValue(contact())
+  updateContact.mockResolvedValue(contact())
   deleteContact.mockResolvedValue(undefined)
   sendNow.mockResolvedValue({})
 })
@@ -172,5 +174,77 @@ describe('send now', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send now' }))
     expect(await screen.findByText('Blessing sent.')).toBeInTheDocument()
     expect(sendNow).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('the add and edit dialog', () => {
+  const openAddDialog = async () => {
+    renderContacts()
+    await userEvent.click(await screen.findByRole('button', { name: 'Add contact' }))
+  }
+
+  it('sends a null send time when no custom one is set, so the contact follows the general time', async () => {
+    await openAddDialog()
+    await userEvent.type(screen.getByLabelText('Name'), 'Noa')
+    await userEvent.type(screen.getByLabelText('Phone'), '972500000002')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(createContact).toHaveBeenCalled())
+    const sent = createContact.mock.calls[0][0] as Record<string, unknown>
+    expect(sent).toMatchObject({ name: 'Noa', phone: '972500000002', send_time: null })
+  })
+
+  it('sends the custom send time once the switch is on', async () => {
+    await openAddDialog()
+    await userEvent.type(screen.getByLabelText('Name'), 'Noa')
+    await userEvent.type(screen.getByLabelText('Phone'), '972500000002')
+    await userEvent.click(screen.getByRole('switch', { name: 'Use a custom send time' }))
+
+    const time = screen.getByLabelText('Send time')
+    await userEvent.clear(time)
+    await userEvent.type(time, '07:30')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(createContact).toHaveBeenCalled())
+    expect((createContact.mock.calls[0][0] as { send_time: string }).send_time).toBe('07:30')
+  })
+
+  // Editing must update in place: creating a second Dana every time someone
+  // fixes a typo is the failure this guards against.
+  it('updates the existing contact rather than creating another', async () => {
+    listContacts.mockResolvedValue([contact()])
+    renderContacts()
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+
+    const name = screen.getByLabelText('Name')
+    expect(name).toHaveValue('Dana')
+    await userEvent.clear(name)
+    await userEvent.type(name, 'Dana Levi')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(updateContact).toHaveBeenCalled())
+    expect(updateContact.mock.calls[0][0]).toBe(1)
+    expect((updateContact.mock.calls[0][1] as { name: string }).name).toBe('Dana Levi')
+    expect(createContact).not.toHaveBeenCalled()
+  })
+
+  it('deletes a contact and refreshes the list once the prompt is accepted', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    listContacts.mockResolvedValue([contact()])
+    renderContacts()
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(deleteContact).toHaveBeenCalledWith(1))
+    expect(listContacts.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  // Deleting is irreversible, so the prompt has to be a real gate, not a formality.
+  it('keeps the contact when the prompt is declined', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    listContacts.mockResolvedValue([contact()])
+    renderContacts()
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    expect(deleteContact).not.toHaveBeenCalled()
   })
 })

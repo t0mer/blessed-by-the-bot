@@ -9,6 +9,8 @@ import Groups from './Groups'
 const listGroups = vi.fn()
 const availableGroups = vi.fn()
 const createGroup = vi.fn()
+const updateGroup = vi.fn()
+const deleteGroup = vi.fn()
 const listWishPatterns = vi.fn()
 const createWishPattern = vi.fn()
 const updateWishPattern = vi.fn()
@@ -22,8 +24,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
       listGroups: () => listGroups(),
       availableGroups: () => availableGroups(),
       createGroup: (g: unknown) => createGroup(g),
-      updateGroup: vi.fn(),
-      deleteGroup: vi.fn(),
+      updateGroup: (id: number, g: unknown) => updateGroup(id, g),
+      deleteGroup: (id: number) => deleteGroup(id),
       listWishPatterns: () => listWishPatterns(),
       createWishPattern: (p: unknown) => createWishPattern(p),
       updateWishPattern: (id: number, p: unknown) => updateWishPattern(id, p),
@@ -47,6 +49,8 @@ beforeEach(() => {
   listGroups.mockResolvedValue([])
   availableGroups.mockResolvedValue(null)
   createGroup.mockResolvedValue(group())
+  updateGroup.mockResolvedValue(group())
+  deleteGroup.mockResolvedValue(undefined)
   listWishPatterns.mockResolvedValue([])
   createWishPattern.mockResolvedValue({ id: 1, language: 'he', pattern: 'x', enabled: true })
   updateWishPattern.mockResolvedValue({})
@@ -227,5 +231,35 @@ describe('wish patterns', () => {
     await waitFor(() => expect(updateWishPattern).toHaveBeenCalled())
     expect(updateWishPattern.mock.calls[0][0]).toBe(3)
     expect((updateWishPattern.mock.calls[0][1] as Record<string, unknown>).enabled).toBe(false)
+  })
+})
+
+describe('editing an existing group', () => {
+  it('updates in place instead of adding a second row for the same chat', async () => {
+    listGroups.mockResolvedValue([group()])
+    renderGroups()
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+
+    const threshold = screen.getByLabelText('Threshold')
+    await userEvent.clear(threshold)
+    await userEvent.type(threshold, '5')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(updateGroup).toHaveBeenCalled())
+    expect(updateGroup.mock.calls[0][0]).toBe(1)
+    expect((updateGroup.mock.calls[0][1] as { threshold: number }).threshold).toBe(5)
+    expect(createGroup).not.toHaveBeenCalled()
+  })
+
+  it('deletes only after the prompt is accepted', async () => {
+    listGroups.mockResolvedValue([group()])
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    renderGroups()
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+    expect(deleteGroup).not.toHaveBeenCalled()
+
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(deleteGroup).toHaveBeenCalledWith(1))
   })
 })
