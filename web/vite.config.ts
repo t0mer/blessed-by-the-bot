@@ -24,7 +24,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
-      include: ['src/lib/**', 'src/components/**', 'src/pages/**'],
+      include: ['src/App.tsx', 'src/lib/**', 'src/components/**', 'src/pages/**'],
     },
   },
   server: {
