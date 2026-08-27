@@ -8,6 +8,8 @@ import Settings from './Settings'
 
 const getSettings = vi.fn()
 const saveSettings = vi.fn()
+const providerStatus = vi.fn()
+const providerTest = vi.fn()
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
@@ -16,8 +18,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
     api: {
       getSettings: () => getSettings(),
       saveSettings: (s: unknown) => saveSettings(s),
-      providerStatus: vi.fn(),
-      providerTest: vi.fn(),
+      providerStatus: () => providerStatus(),
+      providerTest: (phone: string, message?: string) => providerTest(phone, message),
     },
   }
 })
@@ -53,6 +55,10 @@ const renderSettings = () =>
 beforeEach(() => {
   getSettings.mockResolvedValue(settings())
   saveSettings.mockImplementation(async (s: Record<string, unknown>) => s)
+  providerStatus.mockResolvedValue({ provider: 'gowa', state: 'connected', connected: true })
+  providerTest.mockResolvedValue({
+    provider: 'gowa', chat_id: '972500000001@c.us', message_id: 'ABC123',
+  })
 })
 
 describe('secret handling', () => {
@@ -144,5 +150,69 @@ describe('feedback', () => {
     renderSettings()
     expect(await screen.findByText('database is unreachable')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+})
+
+// Spec §9: the settings page must be able to prove the stored configuration
+// works — a connection check and a real message — without saving first.
+describe('provider tools', () => {
+  it('reports the live provider state', async () => {
+    renderSettings()
+    await userEvent.click(await screen.findByRole('button', { name: 'Test connection' }))
+
+    expect(providerStatus).toHaveBeenCalled()
+    expect(await screen.findByText('gowa: connected ✓')).toBeInTheDocument()
+  })
+
+  it('surfaces a failed connection check instead of staying silent', async () => {
+    providerStatus.mockRejectedValue(new Error('no provider configured'))
+    renderSettings()
+    await userEvent.click(await screen.findByRole('button', { name: 'Test connection' }))
+
+    expect(await screen.findByText('no provider configured')).toBeInTheDocument()
+  })
+
+  it('keeps the send button disabled until a destination is entered', async () => {
+    renderSettings()
+    const send = await screen.findByRole('button', { name: 'Send test message' })
+    expect(send).toBeDisabled()
+
+    await userEvent.type(screen.getByPlaceholderText('Phone or chat ID'), '972500000001')
+    expect(send).toBeEnabled()
+  })
+
+  it('sends a test message to the number given and shows where it landed', async () => {
+    renderSettings()
+    await userEvent.type(
+      await screen.findByPlaceholderText('Phone or chat ID'), '972500000001')
+    await userEvent.click(screen.getByRole('button', { name: 'Send test message' }))
+
+    expect(providerTest).toHaveBeenCalledWith('972500000001', undefined)
+    expect(await screen.findByText('972500000001@c.us → ABC123')).toBeInTheDocument()
+  })
+})
+
+describe('conditional fields', () => {
+  // Polling needs no inbound URL, so the auth header only makes sense — and is
+  // only offered — once the user switches GreenAPI to webhook mode.
+  it('offers the webhook auth header only in webhook mode', async () => {
+    renderSettings()
+    await screen.findByLabelText('Incoming messages')
+    expect(screen.queryByLabelText('Webhook auth header')).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByLabelText('Incoming messages'), 'webhook')
+    expect(screen.getByLabelText('Webhook auth header')).toBeInTheDocument()
+  })
+
+  it('saves an edited group-echo threshold', async () => {
+    renderSettings()
+    const threshold = await screen.findByLabelText('Threshold')
+    await userEvent.clear(threshold)
+    await userEvent.type(threshold, '5')
+    await userEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(saveSettings).toHaveBeenCalled())
+    const sent = saveSettings.mock.calls[0][0] as { group_echo: { threshold: number } }
+    expect(sent.group_echo.threshold).toBe(5)
   })
 })
